@@ -6,6 +6,7 @@ const addGithubBtn = document.getElementById('add-github');
 const osd = document.getElementById('osd');
 const osdClose = document.getElementById('osd-close');
 const captureThumbBtn = document.getElementById('capture-thumb');
+const controllerConfigBtn = document.getElementById('controller-config');
 const exitGameBtn = document.getElementById('exit-game');
 
 let games = [];
@@ -145,6 +146,10 @@ function isOSDKey(e) {
 const globalKeyHandler = (e) => {
   if (e.key === 'ArrowLeft') { focusIndex(focusedIndex - 1, false); }
   if (e.key === 'ArrowRight') { focusIndex(focusedIndex + 1, false); }
+  if ((e.key === 'Enter' || e.key === ' ') && !document.body.classList.contains('playing')) {
+    e.preventDefault();
+    focusIndex(focusedIndex, true); // Launch currently focused game
+  }
   if (isOSDKey(e) && document.body.classList.contains('playing')) {
     e.preventDefault();
     toggleOSD(true);
@@ -157,27 +162,19 @@ const globalKeyHandler = (e) => {
 window.addEventListener('keydown', globalKeyHandler, { capture: true });
 document.addEventListener('keydown', globalKeyHandler, { capture: true });
 
-// Gamepad OSD: Select(8) + DPadDown(13)
-let gamepadRAF = 0;
-function pollGamepad() {
-  const pads = navigator.getGamepads?.() || [];
-  for (const p of pads) {
-    if (!p) continue;
-    const select = p.buttons[8]?.pressed;
-    const ddown = p.buttons[13]?.pressed;
-    if (select && ddown && document.body.classList.contains('playing')) {
-      toggleOSD(true);
-      break;
-    }
-  }
-  gamepadRAF = requestAnimationFrame(pollGamepad);
-}
-pollGamepad();
+// Gamepad handling is now done by gamepad-support.js
 
 function toggleOSD(show) {
   osd.classList.toggle('hidden', !show);
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
+controllerConfigBtn.addEventListener('click', () => {
+  if (window.openControllerConfig) {
+    window.openControllerConfig();
+  } else {
+    alert('Controller configuration not available. Please ensure gamepad-support.js is loaded.');
+  }
+});
 exitGameBtn.addEventListener('click', () => { exitGame(); toggleOSD(false); });
 
 // Capture thumbnail.png from in-game canvas if possible
@@ -260,6 +257,14 @@ addGithubBtn.addEventListener('click', async () => {
 
 // Initial load
 fetchGames();
+
+// Expose to gamepad system
+window.focusIndex = focusIndex;
+Object.defineProperty(window, 'focusedIndex', {
+  get: () => focusedIndex,
+  set: (value) => { focusedIndex = value; }
+});
+window.toggleOSD = toggleOSD;
 
 // Attach Shift+ArrowDown handler inside iframe (same-origin games)
 function bindIframeKeys() {
