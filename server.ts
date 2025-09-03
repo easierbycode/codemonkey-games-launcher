@@ -53,6 +53,8 @@ async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?
   const tmpZip = await Deno.makeTempFile({ suffix: ".zip" });
   await Deno.writeFile(tmpZip, zipBytes);
   const extractRoot = await Deno.makeTempDir();
+  let extracted = false;
+  // Try system 'unzip'
   try {
     const unzip = new Deno.Command("unzip", {
       args: ["-q", "-o", tmpZip, "-d", extractRoot],
@@ -60,9 +62,22 @@ async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?
       stdout: "inherit",
     });
     const { success } = await unzip.output();
-    if (!success) throw new Error("unzip failed");
-  } catch (err) {
-    throw new Error(`Failed to extract zip: ${err?.message || err}. Please install 'unzip'.`);
+    extracted = !!success;
+  } catch (_) { /* ignore */ }
+  // On macOS, fallback to 'ditto'
+  if (!extracted && Deno.build.os === "darwin") {
+    try {
+      const ditto = new Deno.Command("/usr/bin/ditto", {
+        args: ["-x", "-k", tmpZip, extractRoot],
+        stderr: "inherit",
+        stdout: "inherit",
+      });
+      const { success } = await ditto.output();
+      extracted = !!success;
+    } catch (_) { /* ignore */ }
+  }
+  if (!extracted) {
+    throw new Error("Failed to extract zip: no system unzip available. Install 'unzip' (Linux) or rely on 'ditto' (macOS).\nTried: unzip, ditto");
   }
   // Determine base directory inside extracted content
   let base = extractRoot;
