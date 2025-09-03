@@ -21,10 +21,10 @@ class GamepadManager {
         right: { gamepadButton: 15, keyboardKey: 'ArrowRight', keyCode: 39 }
       },
       face: {
-        south: { gamepadButton: 0, keyboardKey: 'Enter', keyCode: 13 }, // A/Cross
-        east: { gamepadButton: 1, keyboardKey: 'Escape', keyCode: 27 }, // B/Circle  
-        west: { gamepadButton: 2, keyboardKey: ' ', keyCode: 32 }, // X/Square
-        north: { gamepadButton: 3, keyboardKey: 'Tab', keyCode: 9 } // Y/Triangle
+        south: { gamepadButton: 0, keyboardKey: ' ', keyCode: 32 }, // A/Cross
+        east: { gamepadButton: 1, keyboardKey: 'c', keyCode: 67 }, // B/Circle  
+        west: { gamepadButton: 2, keyboardKey: 'c', keyCode: 67 }, // X/Square
+        north: { gamepadButton: 3, keyboardKey: ' ', keyCode: 32 } // Y/Triangle
       },
       shoulder: {
         leftShoulder: { gamepadButton: 4, keyboardKey: 'q', keyCode: 81 },
@@ -349,25 +349,68 @@ class GamepadManager {
   }
   
   dispatchKeyboardEvent(eventType, mapping) {
-    // Only dispatch to games, not launcher
-    const target = document.querySelector('iframe#gameframe') || 
-                   document.querySelector('canvas') || 
-                   document;
-    
-    const event = new KeyboardEvent(eventType, {
-      key: mapping.keyboardKey,
-      code: mapping.keyboardKey,
-      keyCode: mapping.keyCode,
-      which: mapping.keyCode,
+    // Only dispatch to games when in playing mode
+    if (!document.body.classList.contains('playing')) return;
+
+    const iframe = document.querySelector('iframe#gameframe');
+
+    // Build a KeyboardEvent and force legacy keyCode/which/charCode for engines that still use them
+    const key = mapping.keyboardKey;
+    const code = key === ' ' ? 'Space' : (key.length === 1 ? `Key${key.toUpperCase()}` : key);
+
+    const evt = new KeyboardEvent(eventType, {
+      key,
+      code,
       bubbles: true,
-      cancelable: true
+      cancelable: true,
+      composed: true,
     });
-    
-    if (target.tagName === 'IFRAME' && target.contentDocument) {
-      // Dispatch to iframe content
-      target.contentDocument.dispatchEvent(event);
-    } else {
-      target.dispatchEvent(event);
+
+    // Force read-only props via defineProperty so games checking keyCode/which see expected values
+    const setLegacyProps = (e, code) => {
+      try {
+        Object.defineProperty(e, 'keyCode', { get: () => code });
+        Object.defineProperty(e, 'which', { get: () => code });
+        Object.defineProperty(e, 'charCode', { get: () => code });
+      } catch (_) { /* ignore */ }
+    };
+    setLegacyProps(evt, mapping.keyCode);
+
+    // Some engines only react to keypress for character keys like Space; synthesize it too
+    const makePress = () => {
+      const press = new KeyboardEvent('keypress', { key, code, bubbles: true, cancelable: true, composed: true });
+      setLegacyProps(press, mapping.keyCode);
+      return press;
+    };
+
+    const targets = [];
+    try {
+      if (iframe && iframe.contentDocument) {
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        const active = doc.activeElement;
+        // Prefer focused element, then canvas, then document/window
+        const canvas = doc.querySelector('canvas');
+        if (active && typeof active.dispatchEvent === 'function') targets.push(active);
+        if (canvas) targets.push(canvas);
+        if (doc) targets.push(doc);
+        if (win) targets.push(win);
+        // Also dispatch to iframe element itself as a last resort
+        targets.push(iframe);
+      }
+    } catch (error) {
+      console.warn('Cross-origin iframe, will dispatch on main document:', error);
+    }
+    if (targets.length === 0) targets.push(document);
+
+    console.log(`Dispatching ${eventType} event:`, { key, keyCode: mapping.keyCode, targetCount: targets.length });
+
+    // Dispatch keydown/keyup sequence, plus a keypress for character keys
+    for (const t of targets) {
+      try { t.dispatchEvent(evt); } catch (_) {}
+      if (key === ' ' && eventType === 'keydown') {
+        try { t.dispatchEvent(makePress()); } catch (_) {}
+      }
     }
   }
   
