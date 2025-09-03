@@ -8,6 +8,8 @@ const osdClose = document.getElementById('osd-close');
 const captureThumbBtn = document.getElementById('capture-thumb');
 const controllerConfigBtn = document.getElementById('controller-config');
 const exitGameBtn = document.getElementById('exit-game');
+const clearStorageBtn = document.getElementById('clear-storage');
+const reloadPageBtn = document.getElementById('reload-page');
 
 let games = [];
 let focusedIndex = 0;
@@ -168,6 +170,9 @@ function toggleOSD(show) {
   const limited = !document.body.classList.contains('playing');
   captureThumbBtn.style.display = limited ? 'none' : '';
   exitGameBtn.style.display = limited ? 'none' : '';
+  // Limited-only options
+  if (clearStorageBtn) clearStorageBtn.style.display = limited ? '' : 'none';
+  if (reloadPageBtn) reloadPageBtn.style.display = limited ? '' : 'none';
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
 controllerConfigBtn.addEventListener('click', () => {
@@ -178,6 +183,21 @@ controllerConfigBtn.addEventListener('click', () => {
   }
 });
 exitGameBtn.addEventListener('click', () => { exitGame(); toggleOSD(false); });
+
+// Limited OSD actions
+if (clearStorageBtn) {
+  clearStorageBtn.addEventListener('click', () => {
+    if (confirm('Clear all localStorage for this launcher? This resets controller mappings and preferences.')) {
+      try { localStorage.clear(); } catch {}
+      alert('Local storage cleared.');
+    }
+  });
+}
+if (reloadPageBtn) {
+  reloadPageBtn.addEventListener('click', () => {
+    location.reload();
+  });
+}
 
 // Capture thumbnail.png from in-game canvas if possible
 captureThumbBtn.addEventListener('click', async () => {
