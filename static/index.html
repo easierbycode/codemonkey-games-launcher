@@ -3,17 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Codemonkey Games Launcher</title>
+  <title>CodeMonkey Games Launcher</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>Codemonkey Games</h1>
-    <div class="actions">
-      <button id="add-zip">Add Game (ZIP)</button>
-      <button id="add-github">Add Game (GitHub)</button>
+  <div style="background-color: #D5D5D8; height: 15%; position: relative;">
+    <div class="box">
+      <div class="line"></div>
+      <div class="line"></div>
     </div>
-  </header>
+  </div>
 
   <main>
     <section class="coverflow" id="coverflow" aria-label="Game library"></section>
@@ -21,6 +20,29 @@
       <iframe id="gameframe" title="Game" allowfullscreen></iframe>
     </section>
   </main>
+
+  <div style="background-color: #D5D5D8; height: 12%; position: relative;">
+    <img src="https://raw.githubusercontent.com/easierbycode/nes/master/nes-logo.png" id="logo">
+  
+    <div class="box"></div>
+  </div>
+
+  <div style="background-color: #88848B; height: 3%; position: relative;">
+    <div class="box">
+      <div class="line"></div>
+    </div>
+  </div>
+
+  <div style="background-color: #88848B; height: 3%; position: relative;">
+    <div class="buttons">
+      <button id="add-zip">Add Game (ZIP)</button>
+      <button id="add-github">Add Game (GitHub)</button>
+    </div>
+
+    <div class="box">
+      <div class="line"></div>
+    </div>
+  </div>
 
   <div id="osd" class="osd hidden" role="dialog" aria-modal="true">
     <div class="osd-panel">
