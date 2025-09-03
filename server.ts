@@ -180,17 +180,47 @@ Deno.serve(async (req) => {
         if (p.endsWith('.svg')) return 'image/svg+xml';
         return contentType(filePath) ?? 'application/octet-stream';
       })();
-      // Inject early OSD key listener into index.html pages to ensure priority
+      // Inject early OSD key listener and localStorage fix into index.html pages
       if (filePath.toLowerCase().endsWith('/index.html')) {
         try {
           const html = new TextDecoder().decode(data);
-          const injection = `\n<script>(function(){
+          const osdInjection = `\n<script>(function(){
             function shouldOpen(e){return (e.code==='Backquote'||e.keyCode===192||e.which===192);} 
             function onKey(e){ if(shouldOpen(e)){ try{ parent.postMessage({cmg:'osd',action:'open'}, location.origin); }catch(_){} if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation(); }
               var k=e.key||e.code; if(k==='Escape'){ try{ parent.postMessage({cmg:'osd',action:'exit'}, location.origin); }catch(_){}} }
             try{ document.addEventListener('keydown', onKey, true); window.addEventListener('keydown', onKey, true);}catch(_){}}
           )();</script>\n`;
-          const out = injection + html; // Prepend to ensure first listener registered
+          const localStorageInjection = `\n<script>(function(){
+            // Fix localStorage issues in iframe context
+            var originalJSONParse = JSON.parse;
+            JSON.parse = function(text) {
+              if (text === undefined || text === null || text === 'undefined') {
+                return null;
+              }
+              return originalJSONParse.call(this, text);
+            };
+            // Ensure localStorage works in iframe
+            if (window.parent !== window && !window.localStorage) {
+              window.localStorage = {
+                data: {},
+                getItem: function(key) { return this.data[key] || null; },
+                setItem: function(key, value) { this.data[key] = String(value); },
+                removeItem: function(key) { delete this.data[key]; },
+                clear: function() { this.data = {}; },
+                get length() { return Object.keys(this.data).length; },
+                key: function(index) { return Object.keys(this.data)[index] || null; }
+              };
+              for (let i = 0; i < Object.keys(window.localStorage.data).length; i++) {
+                let key = Object.keys(window.localStorage.data)[i];
+                Object.defineProperty(window.localStorage, key, {
+                  get: function() { return this.getItem(key); },
+                  set: function(value) { this.setItem(key, value); },
+                  configurable: true
+                });
+              }
+            }
+          })();</script>\n`;
+          const out = localStorageInjection + osdInjection + html; // Prepend fixes before content
           data = new TextEncoder().encode(out) as Uint8Array;
           headersCt = 'text/html; charset=utf-8';
         } catch {}

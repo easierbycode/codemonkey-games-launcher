@@ -226,7 +226,8 @@ zipInput.addEventListener('change', async () => {
     const data = await res.json();
     await fetchGames();
     const idx = games.findIndex((g) => g.id === data.id);
-    focusIndex(idx === -1 ? 0 : idx, true);
+    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
+    alert(`Game "${name}" added successfully! Click on it to launch.`);
   } else {
     alert('Upload failed');
   }
@@ -246,7 +247,12 @@ addGithubBtn.addEventListener('click', async () => {
     body: JSON.stringify({ repo, branch, subdir, name }),
   });
   if (res.ok) {
+    const data = await res.json();
     await fetchGames();
+    const idx = games.findIndex((g) => g.id === data.id);
+    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
+    const gameName = name || repo.split('/').pop() || 'game';
+    alert(`Game "${gameName}" added successfully! Click on it to launch.`);
   } else {
     alert('Download failed');
   }
