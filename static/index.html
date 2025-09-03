@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codemonkey Games Launcher</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Codemonkey Games</h1>
+    <div class="actions">
+      <button id="add-zip">Add Game (ZIP)</button>
+      <button id="add-github">Add Game (GitHub)</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="coverflow" id="coverflow" aria-label="Game library"></section>
+    <section class="player">
+      <iframe id="gameframe" title="Game" allowfullscreen></iframe>
+    </section>
+  </main>
+
+  <div id="osd" class="osd hidden" role="dialog" aria-modal="true">
+    <div class="osd-panel">
+      <h2>OSD</h2>
+      <button id="capture-thumb">Capture thumbnail.png</button>
+      <button id="exit-game">Exit game</button>
+      <button id="osd-close">Close</button>
+    </div>
+  </div>
+
+  <input type="file" id="zip-input" accept=".zip" hidden />
+
+  <template id="cover-card">
+    <div class="card" tabindex="0"></div>
+  </template>
+
+  <script src="/static/main.js" type="module"></script>
+</body>
+</html>

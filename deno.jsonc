@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch=server.ts,static/,games/ server.ts",
+    "start": "deno run -A server.ts",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "build:kazeta": "deno run -A scripts/kazeta.ts"
+  },
+  "fmt": {
+    "useTabs": false,
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}

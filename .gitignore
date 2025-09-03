@@ -1,0 +1,20 @@
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+dist/
+build/
+
+# Env files
+.env
+.env.*.local
+
+# Frontend bundles generated from TS
+static/main.js
+games/phaser-sample/main.js
+games/kaplay-sample/main.js
+
+# Maps and misc
+*.map

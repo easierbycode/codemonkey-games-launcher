@@ -1,0 +1,85 @@
+/* Styling inspired by the referenced CodePen; simplified and adapted */
+:root {
+  --bg: #0d0f1a;
+  --fg: #e9ecf1;
+  --accent: #4ecdc4;
+  --muted: #8892b0;
+  --card: #121528;
+  --nintendo-red: #e4000f;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  color: var(--fg);
+  background: radial-gradient(1000px 500px at 20% -10%, #1b203a 0%, transparent 60%),
+              radial-gradient(1000px 500px at 80% 110%, #1b203a 0%, transparent 60%),
+              var(--bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid #20253e;
+}
+.topbar h1 { font-size: 18px; margin: 0; letter-spacing: 0.4px; }
+.topbar .actions button {
+  margin-left: 8px; padding: 8px 12px; border: 1px solid #2a2f52; background: #171a30; color: var(--fg);
+  border-radius: 6px; cursor: pointer; transition: border-color .2s, transform .1s;
+}
+.topbar .actions button:hover { border-color: var(--accent); }
+.topbar .actions button:active { transform: translateY(1px); }
+
+main { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; padding: 16px; height: calc(100% - 50px); }
+
+.coverflow {
+  perspective: 1000px; display: flex; align-items: center; justify-content: center; position: relative;
+  overflow: hidden; border: 1px solid #1f2442; border-radius: 10px; background: linear-gradient(180deg,#0f1224,#0b0e1e);
+}
+.player { border: 1px solid #1f2442; border-radius: 10px; overflow: hidden; position: relative; background: #0b0e1e; }
+#gameframe { width: 100%; height: 100%; min-height: 480px; border: 0; background: #000; }
+
+/* Fullscreen overlay while playing */
+body.playing .coverflow { display: none; }
+body.playing main { grid-template-columns: 1fr; }
+body.playing .player {
+  position: fixed;
+  inset: 0;
+  border: none;
+  border-radius: 0;
+  z-index: 10;
+}
+body.playing #gameframe { min-height: 100vh; }
+
+.card {
+  width: 180px; height: 240px; margin: 0 16px; background: var(--card); border: 1px solid #262a4a; border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+  transform-style: preserve-3d; transition: transform .3s, filter .3s, opacity .3s;
+  background-size: cover; background-position: center; position: relative;
+}
+.card::after { /* Nintendo-style spine */
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; background: var(--nintendo-red);
+  border-top-left-radius: 12px; border-bottom-left-radius: 12px; opacity: .9;
+}
+.card .label { position: absolute; bottom: 8px; left: 16px; right: 12px; color: #fff; font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+
+.coverflow-track { display: flex; will-change: transform; transition: transform .35s; }
+.coverflow-container { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; }
+.card.dim { filter: grayscale(.5) brightness(.7); opacity: .7; }
+.card.focus { transform: translateZ(80px) rotateY(0deg) scale(1.1); z-index: 2; }
+.card.left { transform: rotateY(25deg) translateX(-20px); }
+.card.right { transform: rotateY(-25deg) translateX(20px); }
+
+.osd { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.5); z-index: 10000; }
+.osd.hidden { display: none; }
+.osd-panel { min-width: 280px; background: #111425; border: 1px solid #2a2e4d; border-radius: 10px; padding: 16px; }
+.osd-panel h2 { margin-top: 0; font-size: 16px; }
+.osd-panel button { width: 100%; margin-top: 8px; padding: 8px 10px; }
+
+@media (max-width: 1000px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 260px 1fr; }
+  #gameframe { min-height: 360px; }
+}

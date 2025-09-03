@@ -1,0 +1,90 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: {}
+
+jobs:
+  macos-package:
+    name: macOS DMG/PKG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+      - name: Build server binary
+        run: deno compile -A --output dist/CodemonkeyGames server.ts
+      - name: Prepare App Bundle
+        run: |
+          set -e
+          APP_ROOT="dist/CodemonkeyGames.app"
+          mkdir -p "$APP_ROOT/Contents/MacOS" "$APP_ROOT/Contents/Resources"
+          cat > "$APP_ROOT/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleDisplayName</key><string>Codemonkey Games</string>
+          <key>CFBundleIdentifier</key><string>com.codemonkey.games</string>
+          <key>CFBundleName</key><string>Codemonkey Games</string>
+          <key>CFBundleExecutable</key><string>launch</string>
+          <key>CFBundleVersion</key><string>1.0</string>
+          <key>CFBundleShortVersionString</key><string>1.0</string>
+          <key>LSMinimumSystemVersion</key><string>10.15</string>
+          <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
+          </dict></plist>
+          PLIST
+          cp dist/CodemonkeyGames "$APP_ROOT/Contents/MacOS/CodemonkeyGames"
+          chmod +x "$APP_ROOT/Contents/MacOS/CodemonkeyGames"
+          # Include static assets to run locally
+          mkdir -p "$APP_ROOT/Contents/Resources/static" "$APP_ROOT/Contents/Resources/games"
+          cp -R static "$APP_ROOT/Contents/Resources/"
+          # Launcher script to start server
+          cat > "$APP_ROOT/Contents/MacOS/launch" <<'SH'
+          #!/bin/sh
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          "$DIR/CodemonkeyGames" &
+          PID=$!
+          # Allow server to bind, then open UI
+          sleep 1
+          open http://127.0.0.1:8000/
+          wait $PID
+          SH
+          chmod +x "$APP_ROOT/Contents/MacOS/launch"
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Codemonkey Games" -srcfolder dist/CodemonkeyGames.app -ov -format UDZO dist/CodemonkeyGames.dmg
+      - name: Create PKG
+        run: |
+          pkgbuild --root dist/CodemonkeyGames.app --identifier com.codemonkey.games --version 1.0 dist/CodemonkeyGames.pkg
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            dist/CodemonkeyGames.dmg
+            dist/CodemonkeyGames.pkg
+
+  kazeta:
+    name: Kazeta Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+      - name: Build Kazeta bundle
+        run: deno task build:kazeta
+      - name: Archive Kazeta bundle
+        run: |
+          cd build
+          zip -r kazeta.zip kazeta
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kazeta
+          path: build/kazeta.zip
