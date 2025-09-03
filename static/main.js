@@ -150,10 +150,8 @@ const globalKeyHandler = (e) => {
     e.preventDefault();
     focusIndex(focusedIndex, true); // Launch currently focused game
   }
-  if (isOSDKey(e) && document.body.classList.contains('playing')) {
-    e.preventDefault();
-    toggleOSD(true);
-  }
+  // Open OSD in both launcher (limited) and in-game (full)
+  if (isOSDKey(e)) { e.preventDefault(); toggleOSD(true); }
   if (e.key === 'Escape' && document.body.classList.contains('playing')) {
     exitGame();
   }
@@ -166,6 +164,10 @@ document.addEventListener('keydown', globalKeyHandler, { capture: true });
 
 function toggleOSD(show) {
   osd.classList.toggle('hidden', !show);
+  // Limited menu when not playing: only show Controller Layout and Close
+  const limited = !document.body.classList.contains('playing');
+  captureThumbBtn.style.display = limited ? 'none' : '';
+  exitGameBtn.style.display = limited ? 'none' : '';
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
 controllerConfigBtn.addEventListener('click', () => {

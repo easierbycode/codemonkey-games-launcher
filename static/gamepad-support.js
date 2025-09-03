@@ -290,9 +290,7 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
-    if (!document.body.classList.contains('playing')) return; // Only when in game
-    
-    // Select + DPad Down = Open OSD (existing functionality)
+    // Select + DPad Down = Open OSD
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
     
