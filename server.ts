@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     const rel = decodeURIComponent(url.pathname.replace(/^\/games\//, ""));
     const filePath = rel.endsWith("/") || rel === "" ? join(GAMES_DIR, rel, "index.html") : join(GAMES_DIR, rel);
     try {
-      let data = await Deno.readFile(filePath);
+      let data: Uint8Array = await Deno.readFile(filePath);
       let headersCt = (() => {
         const p = filePath.toLowerCase();
         if (p.endsWith('.js') || p.endsWith('.mjs')) return 'text/javascript';
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
             try{ document.addEventListener('keydown', onKey, true); window.addEventListener('keydown', onKey, true);}catch(_){}}
           )();</script>\n`;
           const out = injection + html; // Prepend to ensure first listener registered
-          data = new TextEncoder().encode(out);
+          data = new TextEncoder().encode(out) as Uint8Array;
           headersCt = 'text/html; charset=utf-8';
         } catch {}
       }
