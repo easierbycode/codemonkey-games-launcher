@@ -13,9 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
+      - run: deno --version
       - name: Build server binary
         run: deno compile -A --output dist/CodemonkeyGames server.ts
       - name: Prepare App Bundle
@@ -74,9 +75,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
+      - run: deno --version
       - name: Build Kazeta bundle
         run: deno task build:kazeta
       - name: Archive Kazeta bundle
