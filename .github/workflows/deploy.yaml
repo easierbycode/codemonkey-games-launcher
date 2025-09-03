@@ -10,6 +10,8 @@ jobs:
   macos-package:
     name: macOS DMG/PKG
     runs-on: macos-latest
+    env:
+      DENO_DIR: deno_cache
     steps:
       - uses: actions/checkout@v4
       - name: Setup Deno
@@ -19,6 +21,10 @@ jobs:
       - run: deno --version
       - name: Build server binary
         run: deno compile -A --output dist/CodemonkeyGames server.ts
+      - name: Strip binary (reduce size)
+        run: |
+          set -e
+          if command -v xcrun >/dev/null 2>&1; then xcrun strip -x dist/CodemonkeyGames || true; fi
       - name: Prepare App Bundle
         run: |
           set -e
@@ -55,9 +61,16 @@ jobs:
           wait $PID
           SH
           chmod +x "$APP_ROOT/Contents/MacOS/launch"
+      - name: Free workspace space
+        run: |
+          rm -rf "$DENO_DIR" || true
+          df -h
       - name: Create DMG
         run: |
-          hdiutil create -volname "Codemonkey Games" -srcfolder dist/CodemonkeyGames.app -ov -format UDZO dist/CodemonkeyGames.dmg
+          set -euxo pipefail
+          # Try compressed UDZO; fallback to makehybrid (uncompressed) if space is tight
+          hdiutil create -volname "Codemonkey Games" -srcfolder dist/CodemonkeyGames.app -ov -format UDZO dist/CodemonkeyGames.dmg || \
+          hdiutil makehybrid -hfs -hfs-volume-name "Codemonkey Games" -o dist/CodemonkeyGames.dmg dist/CodemonkeyGames.app
       - name: Create PKG
         run: |
           pkgbuild --root dist/CodemonkeyGames.app --identifier com.codemonkey.games --version 1.0 dist/CodemonkeyGames.pkg
