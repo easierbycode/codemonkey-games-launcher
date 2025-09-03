@@ -21,12 +21,12 @@ try {
 
 // Minimal .kzi info file
 const kzi = {
-  name: "Codemonkey Games Launcher",
+  name: "CodeMonkey Games Launcher",
   id: "codemonkey.games.launcher",
   version: Deno.env.get("GITHUB_REF_NAME")?.replace(/^v/, "") || "0.1.0",
   entry: "/static/index.html",
   description: "Launcher UI for Phaser & Kaplay games",
-  author: "Codemonkey Games",
+  author: "CodeMonkey Games",
 };
 await Deno.writeTextFile(join(OUT, "app.kzi"), JSON.stringify(kzi, null, 2));
 
@@ -46,4 +46,3 @@ try {
 }
 
 console.log(`Kazeta build created at ${OUT}`);
-

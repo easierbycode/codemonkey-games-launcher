@@ -21,10 +21,10 @@ class GamepadManager {
         right: { gamepadButton: 15, keyboardKey: 'ArrowRight', keyCode: 39 }
       },
       face: {
-        south: { gamepadButton: 0, keyboardKey: ' ', keyCode: 32 }, // A/Cross
-        east: { gamepadButton: 1, keyboardKey: 'c', keyCode: 67 }, // B/Circle  
-        west: { gamepadButton: 2, keyboardKey: 'c', keyCode: 67 }, // X/Square
-        north: { gamepadButton: 3, keyboardKey: ' ', keyCode: 32 } // Y/Triangle
+        btnBottom: { gamepadButton: 0, keyboardKey: ' ', keyCode: 32 }, // A/Cross
+        btnRight: { gamepadButton: 1, keyboardKey: 'c', keyCode: 67 }, // B/Circle  
+        btnLeft: { gamepadButton: 2, keyboardKey: 'c', keyCode: 67 }, // X/Square
+        btnTop: { gamepadButton: 3, keyboardKey: ' ', keyCode: 32 } // Y/Triangle
       },
       shoulder: {
         leftShoulder: { gamepadButton: 4, keyboardKey: 'q', keyCode: 81 },
@@ -279,12 +279,12 @@ class GamepadManager {
     
     // Face button actions
     const faceMapping = this.currentMapping.face;
-    if (controller.buttons[faceMapping.south.gamepadButton]?.pressed && 
+    if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed && 
         !prevButtonState.faceSouth) {
-      console.log('Face SOUTH (A) pressed (button', faceMapping.south.gamepadButton, ')');
+      console.log('Face btnBottom (A) pressed (button', faceMapping.btnBottom.gamepadButton, ')');
       this.handleLauncherAction('select');
       this.buttonState[controllerIndex].faceSouth = true;
-    } else if (!controller.buttons[faceMapping.south.gamepadButton]?.pressed) {
+    } else if (!controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed) {
       this.buttonState[controllerIndex].faceSouth = false;
     }
   }
@@ -467,10 +467,10 @@ class GamepadManager {
                 
                 <!-- Face buttons -->
                 <g class="face-buttons-group" transform="translate(300, 140)">
-                  <circle cx="0" cy="-20" r="12" fill="#555" class="config-btn face-north" data-group="face" data-button="north"></circle>
-                  <circle cx="0" cy="20" r="12" fill="#555" class="config-btn face-south" data-group="face" data-button="south"></circle>
-                  <circle cx="-20" cy="0" r="12" fill="#555" class="config-btn face-west" data-group="face" data-button="west"></circle>
-                  <circle cx="20" cy="0" r="12" fill="#555" class="config-btn face-east" data-group="face" data-button="east"></circle>
+                  <circle cx="0" cy="-20" r="12" fill="#555" class="config-btn face-north" data-group="face" data-button="btnTop"></circle>
+                  <circle cx="0" cy="20" r="12" fill="#555" class="config-btn face-south" data-group="face" data-button="btnBottom"></circle>
+                  <circle cx="-20" cy="0" r="12" fill="#555" class="config-btn face-west" data-group="face" data-button="btnLeft"></circle>
+                  <circle cx="20" cy="0" r="12" fill="#555" class="config-btn face-east" data-group="face" data-button="btnRight"></circle>
                   <!-- Button labels -->
                   <text x="0" y="-16" text-anchor="middle" fill="white" font-size="10">Y</text>
                   <text x="0" y="24" text-anchor="middle" fill="white" font-size="10">A</text>
@@ -704,7 +704,23 @@ class GamepadManager {
   
   loadMapping() {
     const saved = localStorage.getItem('gamepadMapping');
-    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(this.defaultMapping));
+    let mapping = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(this.defaultMapping));
+    // Migrate old face button keys (north/east/south/west) to new names
+    try {
+      if (mapping && mapping.face) {
+        const f = mapping.face;
+        const needsMigration = 'north' in f || 'east' in f || 'south' in f || 'west' in f;
+        if (needsMigration) {
+          mapping.face = {
+            btnTop: f.north || this.defaultMapping.face.btnTop,
+            btnRight: f.east || this.defaultMapping.face.btnRight,
+            btnBottom: f.south || this.defaultMapping.face.btnBottom,
+            btnLeft: f.west || this.defaultMapping.face.btnLeft,
+          };
+        }
+      }
+    } catch (_) { /* ignore migration errors */ }
+    return mapping;
   }
 }
 
