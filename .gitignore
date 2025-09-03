@@ -12,7 +12,6 @@ build/
 .env.*.local
 
 # Frontend bundles generated from TS
-static/main.js
 games/phaser-sample/main.js
 games/kaplay-sample/main.js
 
