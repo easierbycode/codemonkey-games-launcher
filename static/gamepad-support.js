@@ -200,11 +200,13 @@ class GamepadManager {
 
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
-          // Minimal configurator handling: B (btnRight) closes configurator if open
-          if (this.isConfiguratorOpen && this.isConfiguratorOpen() && groupName === 'face' && buttonName === 'btnRight') {
-            try { this.closeConfigurator(); } catch (_) {}
-            this.buttonState[controllerIndex].faceEast = true;
-            return;
+          // If configurator is open: ignore all presses except B to close
+          if (this.isConfiguratorOpen && this.isConfiguratorOpen()) {
+            if (groupName === 'face' && buttonName === 'btnRight') {
+              try { this.closeConfigurator(); } catch (_) {}
+              this.buttonState[controllerIndex].faceEast = true;
+            }
+            return; // swallow all presses while configurator is open
           }
           // While overlays are open, don't forward most groups to the game
           if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
@@ -233,6 +235,8 @@ class GamepadManager {
   }
   
   processAnalogSticks(controller, controllerIndex) {
+    // Ignore analog while configurator is open
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) return;
     // Check if axes exist (some controllers might not have them)
     if (!controller.axes || controller.axes.length < 4) return;
     
@@ -290,6 +294,8 @@ class GamepadManager {
   }
   
   processLauncherControls(controller, controllerIndex, prevButtonState) {
+    // Ignore launcher controls while configurator is open
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) return;
     if (document.body.classList.contains('playing')) return; // Skip if in game
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
 
@@ -337,6 +343,8 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
+    // Ignore OSD controls while configurator is open
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) return;
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
 
@@ -392,6 +400,8 @@ class GamepadManager {
   }
 
   processGameMenuControls(controller, controllerIndex, prevButtonState) {
+    // Ignore game menu while configurator is open
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) return;
     if (!this.isGameMenuOpen()) return;
 
     const dpadMapping = this.currentMapping.dpad;
