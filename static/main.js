@@ -1,3 +1,10 @@
+// Disable right-click/context menu globally in the launcher UI
+try {
+  const __cmHandler = (e) => { e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation(); return false; };
+  window.addEventListener('contextmenu', __cmHandler, true);
+  document.addEventListener('contextmenu', __cmHandler, true);
+} catch {}
+
 const coverflowEl = document.getElementById('coverflow');
 const gameframe = document.getElementById('gameframe');
 const zipInput = document.getElementById('zip-input');

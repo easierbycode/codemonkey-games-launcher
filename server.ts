@@ -290,6 +290,13 @@ const handler = async (req: Request) => {
               var k=e.key||e.code; if(k==='Escape'){ try{ parent.postMessage({cmg:'osd',action:'exit'}, location.origin); }catch(_){}} }
             try{ document.addEventListener('keydown', onKey, true); window.addEventListener('keydown', onKey, true);}catch(_){}}
           )();</script>\n`;
+          const disableContextMenuInjection = `\n<script>(function(){
+            try{
+              var handler=function(e){ if(e && e.preventDefault) e.preventDefault(); if(e && e.stopPropagation) e.stopPropagation(); if(e && e.stopImmediatePropagation) e.stopImmediatePropagation(); return false; };
+              window.addEventListener('contextmenu', handler, true);
+              document.addEventListener('contextmenu', handler, true);
+            }catch(_){/* ignore */}
+          })();</script>\n`;
           const localStorageInjection = `\n<script>(function(){
             // Fix localStorage issues in iframe context
             var originalJSONParse = JSON.parse;
@@ -320,7 +327,7 @@ const handler = async (req: Request) => {
               }
             }
           })();</script>\n`;
-          const injected = cssInjection + localStorageInjection + osdInjection;
+          const injected = cssInjection + localStorageInjection + disableContextMenuInjection + osdInjection;
           let out = html;
           // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
           if (/<head[^>]*>/i.test(html)) {
