@@ -10,9 +10,11 @@ const controllerConfigBtn = document.getElementById('controller-config');
 const exitGameBtn = document.getElementById('exit-game');
 const clearStorageBtn = document.getElementById('clear-storage');
 const reloadPageBtn = document.getElementById('reload-page');
+const osdTitle = document.getElementById('osd-title');
 
 let games = [];
 let focusedIndex = 0;
+let currentGame = null;
 
 function el(tag, className, text) {
   const e = document.createElement(tag);
@@ -105,6 +107,7 @@ function focusIndex(i, open) {
 function openGame(game) {
   gameframe.src = game.urlPath + 'index.html';
   document.body.classList.add('playing');
+  currentGame = game;
   // Update exit button text with current game name
   exitGameBtn.textContent = `Exit ${game.name}`;
   // Fullscreen the root so OSD (sibling overlay) remains visible in fullscreen
@@ -122,6 +125,7 @@ function openGame(game) {
 function exitGame() {
   gameframe.src = 'about:blank';
   document.body.classList.remove('playing');
+  currentGame = null;
   // Reset exit button text
   exitGameBtn.textContent = 'Exit game';
   const d = document;
@@ -173,6 +177,10 @@ function toggleOSD(show) {
   // Limited-only options
   if (clearStorageBtn) clearStorageBtn.style.display = limited ? '' : 'none';
   if (reloadPageBtn) reloadPageBtn.style.display = limited ? '' : 'none';
+  // Title
+  if (osdTitle) {
+    osdTitle.textContent = limited ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
+  }
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
 controllerConfigBtn.addEventListener('click', () => {
