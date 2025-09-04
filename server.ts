@@ -4,11 +4,24 @@
 import { serveDir } from "https://deno.land/std@0.224.0/http/file_server.ts";
 import { ensureDir } from "https://deno.land/std@0.224.0/fs/ensure_dir.ts";
 import { copy } from "https://deno.land/std@0.224.0/fs/copy.ts";
-import { join, fromFileUrl } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { join, fromFileUrl, dirname, basename } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
 
-const ROOT = fromFileUrl(new URL(".", import.meta.url));
-const GAMES_DIR = join(ROOT, "games");
+// Determine an on-disk application root:
+// - In dev (deno run), use the directory of this source file
+// - In compiled mode (deno compile), use the directory of the executable
+function getAppRoot(): string {
+  const exeBase = basename(Deno.execPath()).toLowerCase();
+  const isDenoCli = exeBase === "deno" || exeBase === "deno.exe";
+  if (isDenoCli) {
+    return fromFileUrl(new URL(".", import.meta.url));
+  }
+  // Compiled binary: place assets next to the exe
+  return dirname(Deno.execPath());
+}
+
+const ROOT = getAppRoot();
+const GAMES_DIR = Deno.env.get("CMG_GAMES_DIR") ?? join(ROOT, "games");
 await ensureDir(GAMES_DIR);
 
 type GameEntry = {

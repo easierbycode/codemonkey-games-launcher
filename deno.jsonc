@@ -2,6 +2,8 @@
   "tasks": {
     "dev": "deno run -A --watch=server.ts,static/,games/ server.ts",
     "start": "deno run -A server.ts",
+    "copy:assets:windows": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force build/windows | Out-Null; Copy-Item -Recurse -Force static build/windows/static; if (Test-Path games) { Copy-Item -Recurse -Force games build/windows/games }\"",
+    "build:windows": "deno compile --allow-all --target x86_64-pc-windows-msvc --output build/windows/codemonkey-games-launcher.exe server.ts && deno task copy:assets:windows",
     "fmt": "deno fmt",
     "lint": "deno lint",
     "build:kazeta": "deno run -A scripts/kazeta.ts"
