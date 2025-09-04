@@ -194,6 +194,10 @@ function toggleOSD(show) {
   if (osdTitle) {
     osdTitle.textContent = global ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
   }
+  // Inform the game iframe to show/hide cursor only for in-game OSD
+  if (!global) {
+    try { gameframe.contentWindow && gameframe.contentWindow.postMessage({ cmg: 'cursor', visible: !!show }, location.origin); } catch {}
+  }
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
 controllerConfigBtn.addEventListener('click', () => {

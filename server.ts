@@ -310,7 +310,15 @@ const handler = async (req: Request) => {
       if (isIndex) {
         try {
           const html = new TextDecoder().decode(data);
-          const cssInjection = `\n<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;} canvas{display:block;} ::-webkit-scrollbar{display:none}</style>\n`;
+          const cssInjection = `\n<style>
+            html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+            canvas{display:block;}
+            ::-webkit-scrollbar{display:none}
+            /* Hide cursor by default inside all games */
+            html, body { cursor: none !important; }
+            /* When parent requests cursor visibility (e.g., Game OSD), allow it */
+            html.cmg-cursor-visible, body.cmg-cursor-visible, .cmg-cursor-visible * { cursor: auto !important; }
+          </style>\n`;
           const osdInjection = `\n<script>(function(){
             function shouldOpen(e){return (e.code==='Backquote'||e.keyCode===192||e.which===192);} 
             function onKey(e){ if(shouldOpen(e)){ try{ parent.postMessage({cmg:'osd',action:'open'}, location.origin); }catch(_){} if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation(); }
@@ -354,7 +362,30 @@ const handler = async (req: Request) => {
               }
             }
           })();</script>\n`;
-          const injected = cssInjection + localStorageInjection + disableContextMenuInjection + osdInjection;
+          const cursorToggleInjection = `\n<script>(function(){
+            try {
+              function setCursorVisible(v){
+                try{
+                  var root=document.documentElement; var body=document.body;
+                  if(v){ root && root.classList.add('cmg-cursor-visible'); body && body.classList.add('cmg-cursor-visible'); }
+                  else { root && root.classList.remove('cmg-cursor-visible'); body && body.classList.remove('cmg-cursor-visible'); }
+                }catch(_){}
+              }
+              // Default hidden
+              setCursorVisible(false);
+              // Listen for parent messages to toggle cursor visibility
+              window.addEventListener('message', function(ev){
+                try{
+                  if(!ev || !ev.data) return;
+                  var msg = ev.data;
+                  if (msg && msg.cmg === 'cursor') {
+                    setCursorVisible(!!msg.visible);
+                  }
+                }catch(_){/*ignore*/}
+              }, true);
+            } catch(_){/* ignore */}
+          })();</script>\n`;
+          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection;
           let out = html;
           // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
           if (/<head[^>]*>/i.test(html)) {
