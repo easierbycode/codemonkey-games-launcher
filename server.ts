@@ -230,14 +230,28 @@ async function launchKiosk(url: string): Promise<void> {
   }
   const { path, kind } = found;
   const args: string[] = [];
+  const disableExt = (Deno.env.get("CMG_DISABLE_EXTENSIONS") ?? "1") !== "0";
+  let userDataDir = Deno.env.get("CMG_BROWSER_DATA_DIR");
+  if (disableExt && !userDataDir) {
+    try { userDataDir = await Deno.makeTempDir({ prefix: "cmg-profile-" }); } catch {}
+  }
   if (kind === "chrome") {
     args.push(`--app=${url}`);
     args.push("--kiosk");
     args.push("--start-fullscreen");
     args.push("--no-first-run", "--no-default-browser-check", "--disable-translate");
+    if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
+    // Strongly isolate by running as Guest when disabling extensions
+    if (disableExt) {
+      args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");
+    }
   } else {
     // Edge
     args.push("--kiosk", url, "--edge-kiosk-type=fullscreen", "--no-first-run", "--no-default-browser-check");
+    if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
+    if (disableExt) {
+      args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--inprivate");
+    }
   }
   try {
     new Deno.Command(path, { args, stdin: "null", stdout: "null", stderr: "null" }).spawn();
