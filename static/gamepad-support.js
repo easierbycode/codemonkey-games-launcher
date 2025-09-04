@@ -14,6 +14,9 @@ class GamepadManager {
     // OSD navigation state
     this.osdFocusIndex = -1;
     this.wasOSDOpen = false;
+    // Game Menu navigation state
+    this.gameMenuFocusIndex = -1;
+    this.wasGameMenuOpen = false;
     
     // Default controller mapping (Standard Gamepad API)
     this.defaultMapping = {
@@ -156,6 +159,13 @@ class GamepadManager {
       }
       this.wasOSDOpen = osdOpen;
 
+      // Detect Game Menu open/close edge to initialize focus
+      const gameMenuOpen = this.isGameMenuOpen ? this.isGameMenuOpen() : false;
+      if (gameMenuOpen && !this.wasGameMenuOpen) {
+        this.initGameMenuFocus();
+      }
+      this.wasGameMenuOpen = gameMenuOpen;
+
       // Process all mapped buttons
       this.processButtonGroup('dpad', controller, controllerIndex, prevButtonState);
       this.processButtonGroup('face', controller, controllerIndex, prevButtonState);
@@ -170,6 +180,8 @@ class GamepadManager {
       
       // Handle OSD controls
       this.processOSDControls(controller, controllerIndex, prevButtonState);
+      // Handle Game Menu controls
+      this.processGameMenuControls(controller, controllerIndex, prevButtonState);
     }
   }
   
@@ -187,9 +199,12 @@ class GamepadManager {
 
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
-          // While OSD is open, don't forward most groups to the game; route to OSD
-          if (this.isOSDOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
-            // OSD-specific handling occurs in processOSDControls/routeNavigation
+          // While overlays are open, don't forward most groups to the game
+          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+            // Latch A/B so releasing after closing overlay won't trigger launcher actions
+            if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = true;
+            if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = true;
+            // Overlay-specific handling handled elsewhere
           } else {
             this.dispatchKeyboardEvent('keydown', mapping);
             this.handleSpecialActions(groupName, buttonName, controllerIndex);
@@ -197,8 +212,9 @@ class GamepadManager {
         }
         // Button release (falling edge)
         else if (!isPressed && wasPressed) {
-          if (this.isOSDOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
-            // Suppress while OSD is open
+          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+            if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
+            if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = false;
           } else {
             this.dispatchKeyboardEvent('keyup', mapping);
           }
@@ -268,7 +284,7 @@ class GamepadManager {
   
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
-    if (this.isOSDOpen()) return; // Skip while OSD is open
+    if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
 
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
@@ -368,9 +384,99 @@ class GamepadManager {
     }
   }
 
+  processGameMenuControls(controller, controllerIndex, prevButtonState) {
+    if (!this.isGameMenuOpen()) return;
+
+    const dpadMapping = this.currentMapping.dpad;
+    const faceMapping = this.currentMapping.face;
+    const specialMapping = this.currentMapping.special;
+
+    // Navigation: Up/Down
+    if (controller.buttons[dpadMapping.up.gamepadButton]?.pressed && !prevButtonState.gmDpadUp) {
+      this.handleGameMenuNavigation('up');
+      this.buttonState[controllerIndex].gmDpadUp = true;
+    } else if (!controller.buttons[dpadMapping.up.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].gmDpadUp = false;
+    }
+
+    if (controller.buttons[dpadMapping.down.gamepadButton]?.pressed && !prevButtonState.gmDpadDown) {
+      this.handleGameMenuNavigation('down');
+      this.buttonState[controllerIndex].gmDpadDown = true;
+    } else if (!controller.buttons[dpadMapping.down.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].gmDpadDown = false;
+    }
+
+    // Activate: A (btnBottom)
+    if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed && !prevButtonState.gmFaceSouth) {
+      this.activateFocusedGameMenuItem();
+      // Latch so launcher won't trigger until released after close
+      this.buttonState[controllerIndex].gmFaceSouth = true;
+      this.buttonState[controllerIndex].faceSouth = true;
+    } else if (!controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].gmFaceSouth = false;
+      this.buttonState[controllerIndex].faceSouth = false;
+    }
+
+    // Back/Close: B (btnRight) or Start
+    const bPressed = controller.buttons[faceMapping.btnRight.gamepadButton]?.pressed;
+    const startPressed = controller.buttons[specialMapping.start.gamepadButton]?.pressed;
+    const closePressed = bPressed || startPressed;
+    if (closePressed && !prevButtonState.gmClose) {
+      if (window.hideGameMenu) window.hideGameMenu();
+      this.buttonState[controllerIndex].gmClose = true;
+      // Latch shared flags so launcher won't act until release
+      if (bPressed) this.buttonState[controllerIndex].faceEast = true;
+      if (startPressed) this.buttonState[controllerIndex].startPressed = true;
+    } else if (!closePressed) {
+      this.buttonState[controllerIndex].gmClose = false;
+      if (!bPressed) this.buttonState[controllerIndex].faceEast = false;
+      if (!startPressed) this.buttonState[controllerIndex].startPressed = false;
+    }
+  }
+
+  // ===== Game Menu helpers =====
+  getVisibleGameMenuButtons() {
+    const panel = document.querySelector('#game-menu .game-menu-panel');
+    if (!panel) return [];
+    const buttons = Array.from(panel.querySelectorAll('button'));
+    return buttons.filter((btn) => btn.offsetParent !== null && getComputedStyle(btn).display !== 'none');
+  }
+
+  initGameMenuFocus() {
+    const items = this.getVisibleGameMenuButtons();
+    if (items.length === 0) { this.gameMenuFocusIndex = -1; return; }
+    if (this.gameMenuFocusIndex < 0 || this.gameMenuFocusIndex >= items.length) {
+      this.gameMenuFocusIndex = 0;
+    }
+    try { items[this.gameMenuFocusIndex]?.focus(); } catch (_) {}
+  }
+
+  handleGameMenuNavigation(direction) {
+    const items = this.getVisibleGameMenuButtons();
+    if (items.length === 0) return;
+    if (this.gameMenuFocusIndex < 0) this.gameMenuFocusIndex = 0;
+
+    if (direction === 'up' || direction === 'left') {
+      this.gameMenuFocusIndex = (this.gameMenuFocusIndex - 1 + items.length) % items.length;
+    } else if (direction === 'down' || direction === 'right') {
+      this.gameMenuFocusIndex = (this.gameMenuFocusIndex + 1) % items.length;
+    } else {
+      return;
+    }
+    try { items[this.gameMenuFocusIndex].focus(); } catch (_) {}
+  }
+
+  activateFocusedGameMenuItem() {
+    const items = this.getVisibleGameMenuButtons();
+    if (items.length === 0) return;
+    if (this.gameMenuFocusIndex < 0) this.gameMenuFocusIndex = 0;
+    try { items[this.gameMenuFocusIndex].click(); } catch (_) {}
+  }
+
   // Routing depending on OSD state
   routeNavigation(direction) {
-    if (this.isOSDOpen()) this.handleOSDNavigation(direction);
+    if (this.isGameMenuOpen && this.isGameMenuOpen()) this.handleGameMenuNavigation(direction);
+    else if (this.isOSDOpen()) this.handleOSDNavigation(direction);
     else this.handleLauncherNavigation(direction);
   }
   
@@ -414,6 +520,16 @@ class GamepadManager {
   isOSDOpen() {
     const el = document.getElementById('osd');
     return !!el && !el.classList.contains('hidden');
+  }
+
+  // ===== Overlay helpers =====
+  isGameMenuOpen() {
+    const el = document.getElementById('game-menu');
+    return !!el && !el.classList.contains('hidden');
+  }
+
+  isAnyOverlayOpen() {
+    return this.isOSDOpen() || this.isGameMenuOpen();
   }
 
   getVisibleOSDButtons() {
@@ -472,9 +588,9 @@ class GamepadManager {
   }
   
   dispatchKeyboardEvent(eventType, mapping) {
-    // Only dispatch to games when in playing mode and OSD is not open
+    // Only dispatch to games when in playing mode and no overlay is open
     if (!document.body.classList.contains('playing')) return;
-    if (this.isOSDOpen()) return;
+    if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return;
 
     const iframe = document.querySelector('iframe#gameframe');
 
