@@ -11,6 +11,9 @@ class GamepadManager {
     this.buttonState = {};
     this.analogState = {};
     this.isRunning = false;
+    // OSD navigation state
+    this.osdFocusIndex = -1;
+    this.wasOSDOpen = false;
     
     // Default controller mapping (Standard Gamepad API)
     this.defaultMapping = {
@@ -71,10 +74,10 @@ class GamepadManager {
   
   poll() {
     if (!this.isRunning) return;
-    
+
     this.scanGamepads();
     this.processInputs();
-    
+
     requestAnimationFrame(() => this.poll());
   }
   
@@ -144,7 +147,15 @@ class GamepadManager {
     for (let controllerIndex in this.controllers) {
       const controller = this.controllers[controllerIndex];
       const prevButtonState = this.buttonState[controllerIndex] || {};
-      
+
+      // Detect OSD open/close edge to initialize focus
+      const osdOpen = this.isOSDOpen();
+      if (osdOpen && !this.wasOSDOpen) {
+        // OSD just opened
+        this.initOSDFocus();
+      }
+      this.wasOSDOpen = osdOpen;
+
       // Process all mapped buttons
       this.processButtonGroup('dpad', controller, controllerIndex, prevButtonState);
       this.processButtonGroup('face', controller, controllerIndex, prevButtonState);
@@ -165,25 +176,34 @@ class GamepadManager {
   processButtonGroup(groupName, controller, controllerIndex, prevButtonState) {
     const group = this.currentMapping[groupName];
     if (!group) return;
-    
+
     for (let buttonName in group) {
       const mapping = group[buttonName];
       const button = controller.buttons[mapping.gamepadButton];
-      
+
       if (button) {
         const wasPressed = prevButtonState[buttonName] || false;
         const isPressed = button.pressed;
-        
+
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
-          this.dispatchKeyboardEvent('keydown', mapping);
-          this.handleSpecialActions(groupName, buttonName, controllerIndex);
+          // While OSD is open, don't forward most groups to the game; route to OSD
+          if (this.isOSDOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+            // OSD-specific handling occurs in processOSDControls/routeNavigation
+          } else {
+            this.dispatchKeyboardEvent('keydown', mapping);
+            this.handleSpecialActions(groupName, buttonName, controllerIndex);
+          }
         }
         // Button release (falling edge)
         else if (!isPressed && wasPressed) {
-          this.dispatchKeyboardEvent('keyup', mapping);
+          if (this.isOSDOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+            // Suppress while OSD is open
+          } else {
+            this.dispatchKeyboardEvent('keyup', mapping);
+          }
         }
-        
+
         this.buttonState[controllerIndex][buttonName] = isPressed;
       }
     }
@@ -219,19 +239,15 @@ class GamepadManager {
   processAnalogToDigital(stick, controllerIndex, stickName) {
     const threshold = 0.5;
     const prevState = this.buttonState[controllerIndex][stickName] || {};
-    
+
     // Horizontal movement
     const leftPressed = stick.x < -threshold;
     const rightPressed = stick.x > threshold;
     const wasLeftPressed = prevState.left || false;
     const wasRightPressed = prevState.right || false;
     
-    if (leftPressed && !wasLeftPressed) {
-      this.handleLauncherNavigation('left');
-    }
-    if (rightPressed && !wasRightPressed) {
-      this.handleLauncherNavigation('right');
-    }
+    if (leftPressed && !wasLeftPressed) { this.routeNavigation('left'); }
+    if (rightPressed && !wasRightPressed) { this.routeNavigation('right'); }
     
     // Vertical movement
     const upPressed = stick.y < -threshold;
@@ -239,12 +255,8 @@ class GamepadManager {
     const wasUpPressed = prevState.up || false;
     const wasDownPressed = prevState.down || false;
     
-    if (upPressed && !wasUpPressed) {
-      this.handleLauncherNavigation('up');
-    }
-    if (downPressed && !wasDownPressed) {
-      this.handleLauncherNavigation('down');
-    }
+    if (upPressed && !wasUpPressed) { this.routeNavigation('up'); }
+    if (downPressed && !wasDownPressed) { this.routeNavigation('down'); }
     
     this.buttonState[controllerIndex][stickName] = {
       left: leftPressed,
@@ -256,6 +268,7 @@ class GamepadManager {
   
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
+    if (this.isOSDOpen()) return; // Skip while OSD is open
     
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
@@ -290,18 +303,64 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
-    // Select + DPad Down = Open OSD
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
-    
-    if (selectPressed && downPressed && !prevButtonState.osdCombo) {
-      if (window.toggleOSD) {
-        window.toggleOSD(true);
+
+    // Open OSD: Select + DPad Down
+    if (!this.isOSDOpen()) {
+      if (selectPressed && downPressed && !prevButtonState.osdCombo) {
+        if (window.toggleOSD) {
+          window.toggleOSD(true);
+          // Defer focus init until after DOM updates
+          setTimeout(() => this.initOSDFocus(), 0);
+        }
+        this.buttonState[controllerIndex].osdCombo = true;
+      } else if (!(selectPressed && downPressed)) {
+        this.buttonState[controllerIndex].osdCombo = false;
       }
-      this.buttonState[controllerIndex].osdCombo = true;
-    } else if (!(selectPressed && downPressed)) {
-      this.buttonState[controllerIndex].osdCombo = false;
+      return;
     }
+
+    // When OSD is open: navigate and act
+    const dpadMapping = this.currentMapping.dpad;
+    const faceMapping = this.currentMapping.face;
+
+    // Navigation: Up/Down
+    if (controller.buttons[dpadMapping.up.gamepadButton]?.pressed && !prevButtonState.dpadUp) {
+      this.handleOSDNavigation('up');
+      this.buttonState[controllerIndex].dpadUp = true;
+    } else if (!controller.buttons[dpadMapping.up.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].dpadUp = false;
+    }
+
+    if (controller.buttons[dpadMapping.down.gamepadButton]?.pressed && !prevButtonState.dpadDown) {
+      this.handleOSDNavigation('down');
+      this.buttonState[controllerIndex].dpadDown = true;
+    } else if (!controller.buttons[dpadMapping.down.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].dpadDown = false;
+    }
+
+    // Activate: A (btnBottom)
+    if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed && !prevButtonState.faceSouth) {
+      this.activateFocusedOSDItem();
+      this.buttonState[controllerIndex].faceSouth = true;
+    } else if (!controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].faceSouth = false;
+    }
+
+    // Back/Close: B (btnRight)
+    if (controller.buttons[faceMapping.btnRight.gamepadButton]?.pressed && !prevButtonState.faceEast) {
+      if (window.toggleOSD) window.toggleOSD(false);
+      this.buttonState[controllerIndex].faceEast = true;
+    } else if (!controller.buttons[faceMapping.btnRight.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].faceEast = false;
+    }
+  }
+
+  // Routing depending on OSD state
+  routeNavigation(direction) {
+    if (this.isOSDOpen()) this.handleOSDNavigation(direction);
+    else this.handleLauncherNavigation(direction);
   }
   
   handleLauncherNavigation(direction) {
@@ -321,13 +380,58 @@ class GamepadManager {
       console.warn('window.focusIndex not available for navigation');
     }
   }
-  
+
   handleLauncherAction(action) {
     console.log('Launcher action:', action, 'focusedIndex:', window.focusedIndex);
     if (action === 'select' && window.focusIndex && window.focusedIndex !== undefined) {
       console.log('Launching game at index', window.focusedIndex);
       window.focusIndex(window.focusedIndex, true); // Launch game
     }
+  }
+
+  // ===== OSD helpers =====
+  isOSDOpen() {
+    const el = document.getElementById('osd');
+    return !!el && !el.classList.contains('hidden');
+  }
+
+  getVisibleOSDButtons() {
+    const panel = document.querySelector('#osd .osd-panel');
+    if (!panel) return [];
+    const buttons = Array.from(panel.querySelectorAll('button'));
+    return buttons.filter((btn) => btn.offsetParent !== null && getComputedStyle(btn).display !== 'none');
+  }
+
+  initOSDFocus() {
+    const items = this.getVisibleOSDButtons();
+    if (items.length === 0) { this.osdFocusIndex = -1; return; }
+    // Prefer to keep focus within bounds, else reset to first
+    if (this.osdFocusIndex < 0 || this.osdFocusIndex >= items.length) {
+      this.osdFocusIndex = 0;
+    }
+    try { items[this.osdFocusIndex]?.focus(); } catch (_) {}
+  }
+
+  handleOSDNavigation(direction) {
+    const items = this.getVisibleOSDButtons();
+    if (items.length === 0) return;
+    if (this.osdFocusIndex < 0) this.osdFocusIndex = 0;
+
+    if (direction === 'up' || direction === 'left') {
+      this.osdFocusIndex = (this.osdFocusIndex - 1 + items.length) % items.length;
+    } else if (direction === 'down' || direction === 'right') {
+      this.osdFocusIndex = (this.osdFocusIndex + 1) % items.length;
+    } else {
+      return;
+    }
+    try { items[this.osdFocusIndex].focus(); } catch (_) {}
+  }
+
+  activateFocusedOSDItem() {
+    const items = this.getVisibleOSDButtons();
+    if (items.length === 0) return;
+    if (this.osdFocusIndex < 0) this.osdFocusIndex = 0;
+    try { items[this.osdFocusIndex].click(); } catch (_) {}
   }
   
   handleSpecialActions(groupName, buttonName, controllerIndex) {
@@ -347,8 +451,9 @@ class GamepadManager {
   }
   
   dispatchKeyboardEvent(eventType, mapping) {
-    // Only dispatch to games when in playing mode
+    // Only dispatch to games when in playing mode and OSD is not open
     if (!document.body.classList.contains('playing')) return;
+    if (this.isOSDOpen()) return;
 
     const iframe = document.querySelector('iframe#gameframe');
 

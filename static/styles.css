@@ -70,6 +70,11 @@ body.playing #gameframe { min-height: 100vh; }
 .osd-panel { min-width: 280px; background: #111425; border: 1px solid #2a2e4d; border-radius: 10px; padding: 16px; }
 .osd-panel h2 { margin-top: 0; font-size: 16px; }
 .osd-panel button { width: 100%; margin-top: 8px; padding: 8px 10px; }
+.osd-panel button:focus {
+  outline: 2px solid var(--nintendo-red);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(228, 0, 15, 0.25) inset;
+}
 
 .buttons {
   position: absolute;
