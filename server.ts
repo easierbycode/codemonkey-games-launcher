@@ -181,8 +181,74 @@ async function handleApi(req: Request): Promise<Response | undefined> {
 function rewriteToIndex(pathname: string): boolean {
   return pathname === "/" || pathname === "/index.html";
 }
+// Simple platform helpers
+function isCompiled(): boolean {
+  const base = basename(Deno.execPath()).toLowerCase();
+  return base !== "deno" && base !== "deno.exe";
+}
 
-Deno.serve(async (req) => {
+async function pathExists(p: string): Promise<boolean> {
+  try { await Deno.stat(p); return true; } catch { return false; }
+}
+
+async function findWinBrowser(): Promise<{ path: string; kind: "chrome" | "edge" } | null> {
+  const env = (k: string) => Deno.env.get(k) ?? "";
+  const candidates: { path: string; kind: "chrome" | "edge" }[] = [];
+  const pf = env("PROGRAMFILES");
+  const pfx86 = env("PROGRAMFILES(X86)");
+  const lad = env("LOCALAPPDATA");
+  if (lad) candidates.push({ path: join(lad, "Google", "Chrome", "Application", "chrome.exe"), kind: "chrome" });
+  if (pf) candidates.push({ path: join(pf, "Google", "Chrome", "Application", "chrome.exe"), kind: "chrome" });
+  if (pfx86) candidates.push({ path: join(pfx86, "Google", "Chrome", "Application", "chrome.exe"), kind: "chrome" });
+  if (pf) candidates.push({ path: join(pf, "Microsoft", "Edge", "Application", "msedge.exe"), kind: "edge" });
+  if (pfx86) candidates.push({ path: join(pfx86, "Microsoft", "Edge", "Application", "msedge.exe"), kind: "edge" });
+  // Fallback to names in PATH
+  candidates.push({ path: "chrome.exe", kind: "chrome" });
+  candidates.push({ path: "msedge.exe", kind: "edge" });
+  for (const c of candidates) {
+    if (c.path.includes(".exe") && (c.path.includes("\\") || c.path.includes("/"))) {
+      if (await pathExists(c.path)) return c;
+    } else {
+      // Rely on PATH for bare names
+      try {
+        const p = new Deno.Command(c.path, { args: ["--version"], stdout: "piped", stderr: "null" });
+        const r = await p.output();
+        if (r.success) return c;
+      } catch { /* not found in PATH */ }
+    }
+  }
+  return null;
+}
+
+async function launchKiosk(url: string): Promise<void> {
+  if (Deno.build.os !== "windows") return; // only implement Windows for now
+  const found = await findWinBrowser();
+  if (!found) {
+    // As a last resort, open default browser (no kiosk flags)
+    try { new Deno.Command("cmd.exe", { args: ["/c", "start", "", url], stdin: "null", stdout: "null", stderr: "null" }).spawn(); } catch {}
+    return;
+  }
+  const { path, kind } = found;
+  const args: string[] = [];
+  if (kind === "chrome") {
+    args.push(`--app=${url}`);
+    args.push("--kiosk");
+    args.push("--start-fullscreen");
+    args.push("--no-first-run", "--no-default-browser-check", "--disable-translate");
+  } else {
+    // Edge
+    args.push("--kiosk", url, "--edge-kiosk-type=fullscreen", "--no-first-run", "--no-default-browser-check");
+  }
+  try {
+    new Deno.Command(path, { args, stdin: "null", stdout: "null", stderr: "null" }).spawn();
+  } catch (e) {
+    console.error("Failed to launch browser:", e);
+  }
+}
+
+const PORT = Number(Deno.env.get("PORT") ?? "8000");
+
+const handler = async (req: Request) => {
   const url = new URL(req.url);
 
   // API routes
@@ -269,4 +335,15 @@ Deno.serve(async (req) => {
   // Default to index.html for SPA routing (unknown routes)
   const indexFile = await Deno.readFile(join(ROOT, "static", "index.html"));
   return new Response(indexFile, { headers: { "content-type": "text/html; charset=utf-8" } });
-});
+};
+
+Deno.serve({ port: PORT }, handler);
+
+// Auto-launch kiosk browser when running the compiled Windows binary
+if (isCompiled() && Deno.build.os === "windows" && (Deno.env.get("CMG_AUTO_KIOSK") ?? "1") !== "0") {
+  // Small delay to ensure server is ready
+  (async () => {
+    try { await new Promise((r) => setTimeout(r, 300)); } catch {}
+    await launchKiosk(`http://localhost:${PORT}`);
+  })();
+}
