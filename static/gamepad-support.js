@@ -149,7 +149,8 @@ class GamepadManager {
   processInputs() {
     for (let controllerIndex in this.controllers) {
       const controller = this.controllers[controllerIndex];
-      const prevButtonState = this.buttonState[controllerIndex] || {};
+      // Snapshot previous button state to detect rising edges reliably within this frame
+      const prevButtonState = { ...(this.buttonState[controllerIndex] || {}) };
 
       // Detect OSD open/close edge to initialize focus
       const osdOpen = this.isOSDOpen();
