@@ -200,6 +200,12 @@ class GamepadManager {
 
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
+          // Minimal configurator handling: B (btnRight) closes configurator if open
+          if (this.isConfiguratorOpen && this.isConfiguratorOpen() && groupName === 'face' && buttonName === 'btnRight') {
+            try { this.closeConfigurator(); } catch (_) {}
+            this.buttonState[controllerIndex].faceEast = true;
+            return;
+          }
           // While overlays are open, don't forward most groups to the game
           if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             // Latch A/B so releasing after closing overlay won't trigger launcher actions
@@ -531,6 +537,12 @@ class GamepadManager {
 
   isAnyOverlayOpen() {
     return this.isOSDOpen() || this.isGameMenuOpen();
+  }
+
+  // Minimal check for controller configurator visibility
+  isConfiguratorOpen() {
+    const el = document.querySelector('.controller-configurator');
+    return !!el && el.classList.contains('visible');
   }
 
   getVisibleOSDButtons() {
