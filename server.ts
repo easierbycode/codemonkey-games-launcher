@@ -149,6 +149,19 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     await Deno.writeFile(join(target, "thumbnail.png"), bytes);
     return Response.json({ ok: true });
   }
+  if (url.pathname.startsWith("/api/games/") && req.method === "DELETE") {
+    const id = url.pathname.split("/")[3];
+    const target = join(GAMES_DIR, id);
+    try {
+      const stat = await Deno.stat(target);
+      if (!stat.isDirectory) throw new Error("not dir");
+    } catch {
+      return new Response("not found", { status: 404 });
+    }
+    // Remove the game directory
+    await Deno.remove(target, { recursive: true });
+    return Response.json({ ok: true });
+  }
   return undefined;
 }
 

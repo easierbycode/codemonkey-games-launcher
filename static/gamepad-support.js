@@ -269,10 +269,10 @@ class GamepadManager {
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
     if (this.isOSDOpen()) return; // Skip while OSD is open
-    
+
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
-    if (controller.buttons[dpadMapping.left.gamepadButton]?.pressed && 
+    if (controller.buttons[dpadMapping.left.gamepadButton]?.pressed &&
         !prevButtonState.dpadLeft) {
       console.log('D-pad LEFT pressed (button', dpadMapping.left.gamepadButton, ')');
       this.handleLauncherNavigation('left');
@@ -280,8 +280,8 @@ class GamepadManager {
     } else if (!controller.buttons[dpadMapping.left.gamepadButton]?.pressed) {
       this.buttonState[controllerIndex].dpadLeft = false;
     }
-    
-    if (controller.buttons[dpadMapping.right.gamepadButton]?.pressed && 
+
+    if (controller.buttons[dpadMapping.right.gamepadButton]?.pressed &&
         !prevButtonState.dpadRight) {
       console.log('D-pad RIGHT pressed (button', dpadMapping.right.gamepadButton, ')');
       this.handleLauncherNavigation('right');
@@ -289,16 +289,27 @@ class GamepadManager {
     } else if (!controller.buttons[dpadMapping.right.gamepadButton]?.pressed) {
       this.buttonState[controllerIndex].dpadRight = false;
     }
-    
+
     // Face button actions
     const faceMapping = this.currentMapping.face;
-    if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed && 
+    if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed &&
         !prevButtonState.faceSouth) {
       console.log('Face btnBottom (A) pressed (button', faceMapping.btnBottom.gamepadButton, ')');
       this.handleLauncherAction('select');
       this.buttonState[controllerIndex].faceSouth = true;
     } else if (!controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed) {
       this.buttonState[controllerIndex].faceSouth = false;
+    }
+
+    // Start button - show game menu
+    const specialMapping = this.currentMapping.special;
+    if (controller.buttons[specialMapping.start.gamepadButton]?.pressed &&
+        !prevButtonState.startPressed) {
+      console.log('Start button pressed (button', specialMapping.start.gamepadButton, ')');
+      this.handleStartButton();
+      this.buttonState[controllerIndex].startPressed = true;
+    } else if (!controller.buttons[specialMapping.start.gamepadButton]?.pressed) {
+      this.buttonState[controllerIndex].startPressed = false;
     }
   }
   
@@ -386,6 +397,16 @@ class GamepadManager {
     if (action === 'select' && window.focusIndex && window.focusedIndex !== undefined) {
       console.log('Launching game at index', window.focusedIndex);
       window.focusIndex(window.focusedIndex, true); // Launch game
+    }
+  }
+
+  handleStartButton() {
+    console.log('Start button pressed - showing game menu');
+    if (window.showGameMenu && window.focusedIndex !== undefined) {
+      const game = window.games ? window.games[window.focusedIndex] : null;
+      if (game) {
+        window.showGameMenu(game);
+      }
     }
   }
 

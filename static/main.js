@@ -12,6 +12,12 @@ const clearStorageBtn = document.getElementById('clear-storage');
 const reloadPageBtn = document.getElementById('reload-page');
 const osdTitle = document.getElementById('osd-title');
 
+// Game menu elements
+const gameMenu = document.getElementById('game-menu');
+const gameMenuTitle = document.getElementById('game-menu-title');
+const deleteGameBtn = document.getElementById('delete-game-btn');
+const cancelBtn = document.getElementById('cancel-btn');
+
 let games = [];
 let focusedIndex = 0;
 let currentGame = null;
@@ -285,6 +291,80 @@ addGithubBtn.addEventListener('click', async () => {
   }
 });
 
+// Game menu functions
+function showGameMenu(game) {
+  if (!game) return;
+
+  // Capitalize the game name properly
+  const capitalizedName = game.name
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+
+  gameMenuTitle.textContent = capitalizedName;
+  gameMenu.classList.remove('hidden');
+
+  // Store the current game for deletion
+  gameMenu.dataset.gameId = game.id;
+  gameMenu.dataset.gameIndex = games.indexOf(game);
+}
+
+function hideGameMenu() {
+  gameMenu.classList.add('hidden');
+  delete gameMenu.dataset.gameId;
+  delete gameMenu.dataset.gameIndex;
+}
+
+async function deleteGame(gameId, gameIndex) {
+  if (!confirm('Are you sure you want to delete this game? This action cannot be undone.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
+    if (res.ok) {
+      // Remove from local games array
+      games.splice(gameIndex, 1);
+
+      // Adjust focused index if necessary
+      if (focusedIndex >= games.length) {
+        focusedIndex = Math.max(0, games.length - 1);
+      }
+
+      // Re-render the coverflow
+      renderCoverflow();
+
+      alert('Game deleted successfully!');
+    } else {
+      throw new Error('Delete failed');
+    }
+  } catch (err) {
+    console.error('Error deleting game:', err);
+    alert('Failed to delete game. Please try again.');
+  }
+}
+
+// Game menu event handlers
+deleteGameBtn.addEventListener('click', () => {
+  const gameId = gameMenu.dataset.gameId;
+  const gameIndex = parseInt(gameMenu.dataset.gameIndex);
+  if (gameId && gameIndex >= 0) {
+    deleteGame(gameId, gameIndex);
+  }
+  hideGameMenu();
+});
+
+cancelBtn.addEventListener('click', () => {
+  hideGameMenu();
+});
+
+// Close menu when clicking outside
+gameMenu.addEventListener('click', (e) => {
+  if (e.target === gameMenu) {
+    hideGameMenu();
+  }
+});
+
 // Initial load
 fetchGames();
 
@@ -295,6 +375,11 @@ Object.defineProperty(window, 'focusedIndex', {
   set: (value) => { focusedIndex = value; }
 });
 window.toggleOSD = toggleOSD;
+window.showGameMenu = showGameMenu;
+Object.defineProperty(window, 'games', {
+  get: () => games,
+  set: (value) => { games = value; }
+});
 
 // Attach Shift+ArrowDown handler inside iframe (same-origin games)
 function bindIframeKeys() {
