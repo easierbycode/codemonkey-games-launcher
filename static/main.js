@@ -162,7 +162,7 @@ const globalKeyHandler = (e) => {
     e.preventDefault();
     focusIndex(focusedIndex, true); // Launch currently focused game
   }
-  // Open OSD in both launcher (limited) and in-game (full)
+  // Open OSD in both launcher (Global OSD) and in-game (Game OSD)
   if (isOSDKey(e)) { e.preventDefault(); toggleOSD(true); }
   if (e.key === 'Escape' && document.body.classList.contains('playing')) {
     exitGame();
@@ -176,16 +176,16 @@ document.addEventListener('keydown', globalKeyHandler, { capture: true });
 
 function toggleOSD(show) {
   osd.classList.toggle('hidden', !show);
-  // Limited menu when not playing: only show Controller Layout and Close
-  const limited = !document.body.classList.contains('playing');
-  captureThumbBtn.style.display = limited ? 'none' : '';
-  exitGameBtn.style.display = limited ? 'none' : '';
-  // Limited-only options
-  if (clearStorageBtn) clearStorageBtn.style.display = limited ? '' : 'none';
-  if (reloadPageBtn) reloadPageBtn.style.display = limited ? '' : 'none';
+  // Global menu when not playing a game
+  const global = !document.body.classList.contains('playing');
+  captureThumbBtn.style.display = global ? 'none' : '';
+  exitGameBtn.style.display = global ? 'none' : '';
+  // Global-only options
+  if (clearStorageBtn) clearStorageBtn.style.display = global ? '' : 'none';
+  if (reloadPageBtn) reloadPageBtn.style.display = global ? '' : 'none';
   // Title
   if (osdTitle) {
-    osdTitle.textContent = limited ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
+    osdTitle.textContent = global ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
   }
 }
 osdClose.addEventListener('click', () => toggleOSD(false));
@@ -198,7 +198,7 @@ controllerConfigBtn.addEventListener('click', () => {
 });
 exitGameBtn.addEventListener('click', () => { exitGame(); toggleOSD(false); });
 
-// Limited OSD actions
+// Global OSD actions
 if (clearStorageBtn) {
   clearStorageBtn.addEventListener('click', () => {
     if (confirm('Clear all localStorage for this launcher? This resets controller mappings and preferences.')) {
