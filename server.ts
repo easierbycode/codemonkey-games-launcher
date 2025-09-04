@@ -234,42 +234,72 @@ async function findWinBrowser(): Promise<{ path: string; kind: "chrome" | "edge"
 }
 
 async function launchKiosk(url: string): Promise<void> {
-  if (Deno.build.os !== "windows") return; // only implement Windows for now
-  const found = await findWinBrowser();
-  if (!found) {
-    // As a last resort, open default browser (no kiosk flags)
-    try { new Deno.Command("cmd.exe", { args: ["/c", "start", "", url], stdin: "null", stdout: "null", stderr: "null" }).spawn(); } catch {}
-    return;
-  }
-  const { path, kind } = found;
-  const args: string[] = [];
   const disableExt = (Deno.env.get("CMG_DISABLE_EXTENSIONS") ?? "1") !== "0";
   let userDataDir = Deno.env.get("CMG_BROWSER_DATA_DIR");
   if (disableExt && !userDataDir) {
     try { userDataDir = await Deno.makeTempDir({ prefix: "cmg-profile-" }); } catch {}
   }
-  if (kind === "chrome") {
-    args.push(`--app=${url}`);
-    args.push("--kiosk");
-    args.push("--start-fullscreen");
-    args.push("--no-first-run", "--no-default-browser-check", "--disable-translate");
-    if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
-    // Strongly isolate by running as Guest when disabling extensions
-    if (disableExt) {
-      args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");
+
+  if (Deno.build.os === "windows") {
+    const found = await findWinBrowser();
+    if (!found) {
+      // As a last resort, open default browser (no kiosk flags)
+      try { new Deno.Command("cmd.exe", { args: ["/c", "start", "", url], stdin: "null", stdout: "null", stderr: "null" }).spawn(); } catch {}
+      return;
     }
-  } else {
-    // Edge
-    args.push("--kiosk", url, "--edge-kiosk-type=fullscreen", "--no-first-run", "--no-default-browser-check");
-    if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
-    if (disableExt) {
-      args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--inprivate");
+    const { path, kind } = found;
+    const args: string[] = [];
+    if (kind === "chrome") {
+      args.push(`--app=${url}`);
+      args.push("--kiosk");
+      args.push("--start-fullscreen");
+      args.push("--no-first-run", "--no-default-browser-check", "--disable-translate");
+      if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
+      if (disableExt) {
+        args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");
+      }
+    } else {
+      // Edge
+      args.push("--kiosk", url, "--edge-kiosk-type=fullscreen", "--no-first-run", "--no-default-browser-check");
+      if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
+      if (disableExt) {
+        args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--inprivate");
+      }
     }
+    try {
+      new Deno.Command(path, { args, stdin: "null", stdout: "null", stderr: "null" }).spawn();
+    } catch (e) {
+      console.error("Failed to launch browser:", e);
+    }
+    return;
   }
-  try {
-    new Deno.Command(path, { args, stdin: "null", stdout: "null", stderr: "null" }).spawn();
-  } catch (e) {
-    console.error("Failed to launch browser:", e);
+
+  if (Deno.build.os === "darwin") {
+    // Prefer using the app bundle via `open -a` for robustness
+    const openArgs: string[] = ["-a", "Google Chrome", "--args", `--app=${url}`, "--kiosk", "--start-fullscreen", "--no-first-run", "--no-default-browser-check", "--disable-translate"];
+    if (userDataDir) openArgs.push(`--user-data-dir=${userDataDir}`);
+    if (disableExt) {
+      openArgs.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");
+    }
+    try {
+      new Deno.Command("/usr/bin/open", { args: openArgs, stdin: "null", stdout: "null", stderr: "null" }).spawn();
+      return;
+    } catch (_) {
+      // Fallback: try launching the binary directly if present
+      const chromeBin = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+      const args: string[] = [`--app=${url}`, "--kiosk", "--start-fullscreen", "--no-first-run", "--no-default-browser-check", "--disable-translate"];
+      if (userDataDir) args.push(`--user-data-dir=${userDataDir}`);
+      if (disableExt) args.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");
+      try {
+        new Deno.Command(chromeBin, { args, stdin: "null", stdout: "null", stderr: "null" }).spawn();
+        return;
+      } catch (e) {
+        console.error("Failed to launch Chrome on macOS:", e);
+      }
+    }
+    // Last resort: open default browser (no kiosk flags)
+    try { new Deno.Command("/usr/bin/open", { args: [url], stdin: "null", stdout: "null", stderr: "null" }).spawn(); } catch {}
+    return;
   }
 }
 
@@ -423,8 +453,8 @@ const handler = async (req: Request) => {
 
 Deno.serve({ port: PORT }, handler);
 
-// Auto-launch kiosk browser when running the compiled Windows binary
-if (isCompiled() && Deno.build.os === "windows" && (Deno.env.get("CMG_AUTO_KIOSK") ?? "1") !== "0") {
+// Auto-launch kiosk browser when running the compiled binary on supported OSes
+if (isCompiled() && (Deno.build.os === "windows" || Deno.build.os === "darwin") && (Deno.env.get("CMG_AUTO_KIOSK") ?? "1") !== "0") {
   // Small delay to ensure server is ready
   (async () => {
     try { await new Promise((r) => setTimeout(r, 300)); } catch {}

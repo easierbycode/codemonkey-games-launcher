@@ -8,7 +8,11 @@
     "build-run:windows": "deno task build:windows && deno task run:windows",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "build:kazeta": "deno run -A scripts/kazeta.ts"
+    "build:kazeta": "deno run -A scripts/kazeta.ts",
+    "copy:assets:mac": "sh -c 'mkdir -p build/mac && cp -R static build/mac/static && if [ -d games ]; then cp -R games build/mac/games; fi'",
+    "build:mac": "deno compile --allow-all --output build/mac/codemonkey-games-launcher server.ts && deno task copy:assets:mac",
+    "run:mac": "build/mac/codemonkey-games-launcher",
+    "build-run:mac": "deno task build:mac && deno task run:mac"
   },
   "fmt": {
     "useTabs": false,
