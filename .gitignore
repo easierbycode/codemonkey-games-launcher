@@ -12,8 +12,8 @@ build/
 .env.*.local
 
 # Frontend bundles generated from TS
-games/phaser-sample/main.js
-games/kaplay-sample/main.js
+# Intentionally keep phaser-sample main.js tracked
+# games/phaser-sample/main.js
 
 # Maps and misc
 *.map
