@@ -272,10 +272,18 @@ const handler = async (req: Request) => {
         if (p.endsWith('.svg')) return 'image/svg+xml';
         return contentType(filePath) ?? 'application/octet-stream';
       })();
-      // Inject early OSD key listener and localStorage fix into index.html pages
-      if (filePath.toLowerCase().endsWith('/index.html')) {
+      // Inject helpers into game index pages across platforms (Windows paths use \\)
+      const isIndex = (
+        filePath.toLowerCase().endsWith("/index.html") ||
+        filePath.toLowerCase().endsWith("\\index.html") ||
+        url.pathname.endsWith("/index.html") ||
+        url.pathname.endsWith("/")
+      );
+      // Inject early OSD key listener, localStorage fix, and overflow hidden CSS into index.html pages
+      if (isIndex) {
         try {
           const html = new TextDecoder().decode(data);
+          const cssInjection = `\n<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;} canvas{display:block;} ::-webkit-scrollbar{display:none}</style>\n`;
           const osdInjection = `\n<script>(function(){
             function shouldOpen(e){return (e.code==='Backquote'||e.keyCode===192||e.which===192);} 
             function onKey(e){ if(shouldOpen(e)){ try{ parent.postMessage({cmg:'osd',action:'open'}, location.origin); }catch(_){} if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation(); }
@@ -312,7 +320,18 @@ const handler = async (req: Request) => {
               }
             }
           })();</script>\n`;
-          const out = localStorageInjection + osdInjection + html; // Prepend fixes before content
+          const injected = cssInjection + localStorageInjection + osdInjection;
+          let out = html;
+          // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
+          if (/<head[^>]*>/i.test(html)) {
+            out = html.replace(/<head[^>]*>/i, (m) => m + injected);
+          } else if (/^<!doctype[^>]*>/i.test(html)) {
+            out = html.replace(/^<!doctype[^>]*>/i, (m) => m + injected);
+          } else if (/<html[^>]*>/i.test(html)) {
+            out = html.replace(/<html[^>]*>/i, (m) => m + injected);
+          } else {
+            out = injected + html; // Fallback
+          }
           data = new TextEncoder().encode(out) as Uint8Array;
           headersCt = 'text/html; charset=utf-8';
         } catch {}
