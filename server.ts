@@ -112,10 +112,23 @@ async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?
 }
 
 async function handleApi(req: Request): Promise<Response | undefined> {
+  const json = (data: unknown, init: ResponseInit = {}) => {
+    const headers = new Headers(init.headers || {});
+    if (!headers.has("content-type")) headers.set("content-type", "application/json");
+    try {
+      // Use standard JSON response when available
+      // deno-lint-ignore no-explicit-any
+      const anyResp = Response as any;
+      if (anyResp && typeof anyResp.json === "function") {
+        return anyResp.json(data, { ...init, headers });
+      }
+    } catch {}
+    return new Response(JSON.stringify(data), { ...init, headers });
+  };
   const url = new URL(req.url);
   if (url.pathname === "/api/games" && req.method === "GET") {
     const games = await listGames();
-    return Response.json(games);
+    return json(games);
   }
   if (url.pathname === "/api/add-game/from-zip" && req.method === "POST") {
     const form = await req.formData();
@@ -128,7 +141,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     await ensureDir(target);
     const bytes = new Uint8Array(await file.arrayBuffer());
     await saveZipToDir(bytes, target, subdir);
-    return Response.json({ ok: true, id });
+    return json({ ok: true, id });
   }
   if (url.pathname === "/api/add-game/from-github" && req.method === "POST") {
     const { repo, branch, subdir, name } = await req.json();
@@ -146,7 +159,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
     await saveZipToDir(zipBytes, target, subdir || "root");
-    return Response.json({ ok: true, id });
+    return json({ ok: true, id });
   }
   if (url.pathname.startsWith("/api/games/") && url.pathname.endsWith("/thumbnail") && req.method === "POST") {
     const id = url.pathname.split("/")[3];
@@ -160,7 +173,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     const body = await req.arrayBuffer();
     const bytes = new Uint8Array(body);
     await Deno.writeFile(join(target, "thumbnail.png"), bytes);
-    return Response.json({ ok: true });
+    return json({ ok: true });
   }
   if (url.pathname.startsWith("/api/games/") && req.method === "DELETE") {
     const id = url.pathname.split("/")[3];
@@ -173,7 +186,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     }
     // Remove the game directory
     await Deno.remove(target, { recursive: true });
-    return Response.json({ ok: true });
+    return json({ ok: true });
   }
   return undefined;
 }
