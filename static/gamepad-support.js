@@ -11,6 +11,8 @@ class GamepadManager {
     this.buttonState = {};
     this.analogState = {};
     this.isRunning = false;
+    // Testing mode (visualize presses on configurator SVG)
+    this.testingMode = false;
     // OSD navigation state
     this.osdFocusIndex = -1;
     this.wasOSDOpen = false;
@@ -86,6 +88,13 @@ class GamepadManager {
     // If in detect mode, capture the next newly-pressed button
     this.handleDetectionTick();
     this.processInputs();
+
+    // While configurator is open and testing enabled, update SVG highlights
+    try {
+      if (this.isConfiguratorOpen && this.isConfiguratorOpen() && this.testingMode) {
+        this.updateTestingVisual();
+      }
+    } catch (_) {}
 
     requestAnimationFrame(() => this.poll());
   }
@@ -204,16 +213,22 @@ class GamepadManager {
         const wasPressed = prevButtonState[buttonName] || false;
         const isPressed = button.pressed;
 
+        const testingActive = (this.isTestingActive && this.isTestingActive());
+
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
+          // While testing is active, swallow inputs entirely (no actions)
+          if (testingActive) {
+            // no-op: allow state update below for visualization
+          }
           // B closes controller configurator if open; otherwise fall through
-          if (this.isConfiguratorOpen && this.isConfiguratorOpen() && groupName === 'face' && buttonName === 'btnRight') {
+          else if (this.isConfiguratorOpen && this.isConfiguratorOpen() && groupName === 'face' && buttonName === 'btnRight') {
             try { this.closeConfigurator(); } catch (_) {}
             this.buttonState[controllerIndex].faceEast = true;
             return;
           }
           // While overlays are open, don't forward most groups to the game
-          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+          else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             // Latch A/B so releasing after closing overlay won't trigger launcher actions
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = true;
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = true;
@@ -225,7 +240,9 @@ class GamepadManager {
         }
         // Button release (falling edge)
         else if (!isPressed && wasPressed) {
-          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+          if (testingActive) {
+            // swallow
+          } else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = false;
           } else {
@@ -267,6 +284,15 @@ class GamepadManager {
   
   processAnalogToDigital(stick, controllerIndex, stickName) {
     const threshold = 0.5;
+    if (this.isTestingActive && this.isTestingActive()) {
+      // Do not route navigation while testing
+      const leftPressed = stick.x < -threshold;
+      const rightPressed = stick.x > threshold;
+      const upPressed = stick.y < -threshold;
+      const downPressed = stick.y > threshold;
+      this.buttonState[controllerIndex][stickName] = { left: leftPressed, right: rightPressed, up: upPressed, down: downPressed };
+      return;
+    }
     const prevState = this.buttonState[controllerIndex][stickName] || {};
 
     // Horizontal movement
@@ -298,6 +324,7 @@ class GamepadManager {
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
 
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
@@ -343,6 +370,7 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
 
@@ -398,6 +426,7 @@ class GamepadManager {
   }
 
   processGameMenuControls(controller, controllerIndex, prevButtonState) {
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     if (!this.isGameMenuOpen()) return;
 
     const dpadMapping = this.currentMapping.dpad;
@@ -488,6 +517,7 @@ class GamepadManager {
 
   // Routing depending on OSD state
   routeNavigation(direction) {
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     if (this.isGameMenuOpen && this.isGameMenuOpen()) this.handleGameMenuNavigation(direction);
     else if (this.isOSDOpen()) this.handleOSDNavigation(direction);
     else this.handleLauncherNavigation(direction);
@@ -512,6 +542,7 @@ class GamepadManager {
   }
 
   handleLauncherAction(action) {
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     console.log('Launcher action:', action, 'focusedIndex:', window.focusedIndex);
     if (action === 'select' && window.focusIndex && window.focusedIndex !== undefined) {
       console.log('Launching game at index', window.focusedIndex);
@@ -520,6 +551,7 @@ class GamepadManager {
   }
 
   handleStartButton() {
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     console.log('Start button pressed - showing game menu');
     if (window.showGameMenu && window.focusedIndex !== undefined) {
       const game = window.games ? window.games[window.focusedIndex] : null;
@@ -549,6 +581,11 @@ class GamepadManager {
   isConfiguratorOpen() {
     const el = document.querySelector('.controller-configurator');
     return !!el && el.classList.contains('visible');
+  }
+
+  // Testing is active only when toggle is on and configurator is open
+  isTestingActive() {
+    return !!this.testingMode && (this.isConfiguratorOpen && this.isConfiguratorOpen());
   }
 
   getVisibleOSDButtons() {
@@ -610,6 +647,7 @@ class GamepadManager {
     // Only dispatch to games when in playing mode and no overlay is open
     if (!document.body.classList.contains('playing')) return;
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return;
+    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
 
     const iframe = document.querySelector('iframe#gameframe');
 
@@ -809,6 +847,18 @@ class GamepadManager {
                   <button type="button" id="reset-mapping-btn">Reset to Default</button>
                 </div>
               </div>
+
+              <div class="testing-section" id="testing-section">
+                <h3>Button Testing</h3>
+                <div class="form-group inline">
+                  <label for="btn-testing-toggle">Live Testing:</label>
+                  <label class="switch">
+                    <input type="checkbox" id="btn-testing-toggle" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <p class="testing-hint">When enabled, pressed controls light up on the diagram.</p>
+              </div>
             </div>
           </div>
           
@@ -869,6 +919,15 @@ class GamepadManager {
         keyInput.value = defKey;
       }
     });
+
+    // Button Testing toggle
+    const testingToggle = configurator.querySelector('#btn-testing-toggle');
+    if (testingToggle) {
+      testingToggle.checked = !!this.testingMode;
+      testingToggle.addEventListener('change', () => {
+        this.setTestingMode(!!testingToggle.checked);
+      });
+    }
   }
   
   selectButtonForConfig(group, button, element) {
@@ -963,6 +1022,72 @@ class GamepadManager {
     }
     // Stop detect mode if active
     try { this.cancelGamepadButtonDetection(); } catch (_) {}
+    // Turn off testing visuals
+    try { this.setTestingMode(false); } catch (_) {}
+  }
+  
+  // ===== Button Testing (visualize pressed controls) =====
+  setTestingMode(enabled) {
+    this.testingMode = !!enabled;
+    const root = document.querySelector('.controller-configurator');
+    if (root) root.classList.toggle('testing-active', this.testingMode);
+    if (!this.testingMode) this.clearTestingVisual();
+  }
+
+  clearTestingVisual() {
+    try {
+      const els = document.querySelectorAll('.controller-configurator .controller-svg .config-btn');
+      els.forEach(el => el.classList.remove('testing-pressed'));
+    } catch (_) {}
+  }
+
+  updateTestingVisual() {
+    const root = document.querySelector('.controller-configurator');
+    if (!root) return;
+    const pressed = this.getAggregatedPressedState();
+
+    const map = [
+      { sel: '.dpad-up', key: 'up' },
+      { sel: '.dpad-down', key: 'down' },
+      { sel: '.dpad-left', key: 'left' },
+      { sel: '.dpad-right', key: 'right' },
+      { sel: '.face-north', key: 'btnTop' },
+      { sel: '.face-south', key: 'btnBottom' },
+      { sel: '.face-west', key: 'btnLeft' },
+      { sel: '.face-east', key: 'btnRight' },
+      { sel: '.shoulder-left', key: 'leftShoulder' },
+      { sel: '.shoulder-right', key: 'rightShoulder' },
+      { sel: '.trigger-left', key: 'leftTrigger' },
+      { sel: '.trigger-right', key: 'rightTrigger' },
+      { sel: '.special-select', key: 'select' },
+      { sel: '.special-start', key: 'start' },
+      { sel: '.stick-left', key: 'leftStick' },
+      { sel: '.stick-right', key: 'rightStick' },
+    ];
+
+    for (const m of map) {
+      const el = root.querySelector(m.sel);
+      if (!el) continue;
+      if (pressed[m.key]) el.classList.add('testing-pressed');
+      else el.classList.remove('testing-pressed');
+    }
+  }
+
+  getAggregatedPressedState() {
+    const init = () => false;
+    const names = {
+      up: init(), down: init(), left: init(), right: init(),
+      btnTop: init(), btnBottom: init(), btnLeft: init(), btnRight: init(),
+      leftShoulder: init(), rightShoulder: init(), leftTrigger: init(), rightTrigger: init(),
+      select: init(), start: init(), leftStick: init(), rightStick: init(),
+    };
+    for (let idx in this.controllers) {
+      const bs = this.buttonState[idx] || {};
+      for (let k in names) {
+        if (Object.prototype.hasOwnProperty.call(bs, k)) names[k] = !!(names[k] || bs[k]);
+      }
+    }
+    return names;
   }
   
   getKeyCode(key) {
@@ -1266,6 +1391,74 @@ const configuratorCSS = `
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
+}
+
+/* Inline form group (for testing toggle) */
+.form-group.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.testing-section h3 {
+  color: #ecf0f1;
+  margin: 0 0 10px 0;
+}
+
+.testing-hint {
+  color: #bdc3c7;
+  font-size: 12px;
+  margin: 6px 0 0 0;
+}
+
+/* Toggle switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 24px;
+}
+
+.switch input { display: none; }
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #7f8c8d;
+  transition: .2s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #27ae60;
+}
+
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+/* Visual highlight for pressed buttons during testing */
+.controller-configurator.testing-active .controller-svg .config-btn.testing-pressed {
+  fill: #2ecc71 !important;
+  stroke: #ecf0f1;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(46, 204, 113, 0.8));
 }
 
 #save-mapping-btn {
