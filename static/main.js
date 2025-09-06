@@ -226,7 +226,9 @@ if (reloadPageBtn) {
 
 // Capture thumbnail.png from in-game canvas if possible
 captureThumbBtn.addEventListener('click', async () => {
-  const game = games[focusedIndex];
+  // When in-game, prefer the currently running game to avoid
+  // mismatches if the coverflow focus moved while playing.
+  const game = (document.body.classList.contains('playing') && currentGame) ? currentGame : games[focusedIndex];
   if (!game) return;
   try {
     const dataUrl = await captureIframeCanvas(gameframe);
