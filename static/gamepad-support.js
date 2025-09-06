@@ -11,12 +11,19 @@ class GamepadManager {
     this.buttonState = {};
     this.analogState = {};
     this.isRunning = false;
+    // Testing mode (visualize presses on configurator SVG)
+    this.testingMode = false;
+    this.testingController = 'all'; // 'all' or specific controller index (number or string)
     // OSD navigation state
     this.osdFocusIndex = -1;
     this.wasOSDOpen = false;
     // Game Menu navigation state
     this.gameMenuFocusIndex = -1;
     this.wasGameMenuOpen = false;
+
+    // Detect Gamepad Button state
+    this._detecting = false; // { ui: { selectEl, buttonEl, hintEl } } | false
+    this._detectSnapshot = {}; // controllerIndex -> [bool]
     
     // Default controller mapping (Standard Gamepad API)
     this.defaultMapping = {
@@ -79,7 +86,16 @@ class GamepadManager {
     if (!this.isRunning) return;
 
     this.scanGamepads();
+    // If in detect mode, capture the next newly-pressed button
+    this.handleDetectionTick();
     this.processInputs();
+
+    // While configurator is open and testing enabled, update SVG highlights
+    try {
+      if (this.isConfiguratorOpen && this.isConfiguratorOpen() && this.testingMode) {
+        this.updateTestingVisual();
+      }
+    } catch (_) {}
 
     requestAnimationFrame(() => this.poll());
   }
@@ -100,11 +116,13 @@ class GamepadManager {
   onGamepadConnected(event) {
     console.log('Gamepad connected:', event.gamepad);
     this.addGamepad(event.gamepad);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   onGamepadDisconnected(event) {
     console.log('Gamepad disconnected:', event.gamepad);
     this.removeGamepad(event.gamepad);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   addGamepad(gamepad) {
@@ -132,12 +150,14 @@ class GamepadManager {
     this.analogState[gamepad.index] = { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
     
     console.log(`Gamepad ${gamepad.index} (${gamepad.id}) added and initialized`);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   removeGamepad(gamepad) {
     delete this.controllers[gamepad.index];
     delete this.buttonState[gamepad.index];
     delete this.analogState[gamepad.index];
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   resetButtonStates() {
@@ -198,10 +218,22 @@ class GamepadManager {
         const wasPressed = prevButtonState[buttonName] || false;
         const isPressed = button.pressed;
 
+        const swallow = this.shouldSwallowFor(controllerIndex);
+
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
+          // While testing (for this controller), swallow inputs entirely (no actions)
+          if (swallow) {
+            // no-op: allow state update below for visualization
+          }
+          // B closes controller configurator if open; otherwise fall through
+          else if (this.isConfiguratorOpen && this.isConfiguratorOpen() && groupName === 'face' && buttonName === 'btnRight') {
+            try { this.closeConfigurator(); } catch (_) {}
+            this.buttonState[controllerIndex].faceEast = true;
+            return;
+          }
           // While overlays are open, don't forward most groups to the game
-          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+          else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             // Latch A/B so releasing after closing overlay won't trigger launcher actions
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = true;
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = true;
@@ -213,7 +245,9 @@ class GamepadManager {
         }
         // Button release (falling edge)
         else if (!isPressed && wasPressed) {
-          if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
+          if (swallow) {
+            // swallow
+          } else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = false;
           } else {
@@ -255,6 +289,15 @@ class GamepadManager {
   
   processAnalogToDigital(stick, controllerIndex, stickName) {
     const threshold = 0.5;
+    if (this.shouldSwallowFor(controllerIndex)) {
+      // Do not route navigation while testing
+      const leftPressed = stick.x < -threshold;
+      const rightPressed = stick.x > threshold;
+      const upPressed = stick.y < -threshold;
+      const downPressed = stick.y > threshold;
+      this.buttonState[controllerIndex][stickName] = { left: leftPressed, right: rightPressed, up: upPressed, down: downPressed };
+      return;
+    }
     const prevState = this.buttonState[controllerIndex][stickName] || {};
 
     // Horizontal movement
@@ -286,6 +329,7 @@ class GamepadManager {
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
 
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
@@ -331,6 +375,7 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
 
@@ -386,6 +431,7 @@ class GamepadManager {
   }
 
   processGameMenuControls(controller, controllerIndex, prevButtonState) {
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     if (!this.isGameMenuOpen()) return;
 
     const dpadMapping = this.currentMapping.dpad;
@@ -531,6 +577,27 @@ class GamepadManager {
 
   isAnyOverlayOpen() {
     return this.isOSDOpen() || this.isGameMenuOpen();
+  }
+
+  // Minimal check for controller configurator visibility
+  isConfiguratorOpen() {
+    const el = document.querySelector('.controller-configurator');
+    return !!el && el.classList.contains('visible');
+  }
+
+  // Testing is active only when toggle is on and configurator is open
+  isTestingActive() {
+    return !!this.testingMode && (this.isConfiguratorOpen && this.isConfiguratorOpen());
+  }
+
+  // Swallow inputs for ALL controllers while testing is active
+  // Rationale: During live button testing, no controller should
+  // navigate the launcher or close overlays (e.g., via B). The
+  // controller selection only affects visualization aggregation,
+  // not input routing. This prevents other controllers from
+  // interacting with the launcher while testing a single controller.
+  shouldSwallowFor(controllerIndex) {
+    return !!(this.isTestingActive && this.isTestingActive());
   }
 
   getVisibleOSDButtons() {
@@ -783,11 +850,31 @@ class GamepadManager {
                     <option value="15">D-Pad Right</option>
                     <option value="16">Home</option>
                   </select>
+                  <button type="button" id="detect-gamepad-btn">Detect Gamepad Button</button>
+                  <div id="detect-gp-hint" style="margin-top:6px;color:#bdc3c7;font-size:12px;display:none;">Press any gamepad button...</div>
                 </div>
                 <div class="form-actions">
                   <button type="button" id="save-mapping-btn">Save</button>
                   <button type="button" id="reset-mapping-btn">Reset to Default</button>
                 </div>
+              </div>
+
+              <div class="testing-section" id="testing-section">
+                <h3>Button Testing</h3>
+                <div class="form-group inline">
+                  <label for="btn-testing-toggle">Live Testing:</label>
+                  <label class="switch">
+                    <input type="checkbox" id="btn-testing-toggle" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="form-group inline">
+                  <label for="testing-controller-select">Controller:</label>
+                  <select id="testing-controller-select">
+                    <option value="all">All Connected</option>
+                  </select>
+                </div>
+                <p class="testing-hint">When enabled, pressed controls light up on the diagram. Choose a controller to test or leave as All.</p>
               </div>
             </div>
           </div>
@@ -831,6 +918,46 @@ class GamepadManager {
     resetMappingBtn.addEventListener('click', () => {
       this.resetCurrentMapping();
     });
+
+    // Detect Gamepad Button
+    const detectGpBtn = configurator.querySelector('#detect-gamepad-btn');
+    const detectHint = configurator.querySelector('#detect-gp-hint');
+    const gpSelect = configurator.querySelector('#gamepad-button-select');
+    detectGpBtn?.addEventListener('click', () => {
+      if (!this.configSelection) return;
+      this.startGamepadButtonDetection({ selectEl: gpSelect, buttonEl: detectGpBtn, hintEl: detectHint });
+    });
+
+    // When selecting a gamepad button from dropdown, display its default keyboard key
+    gpSelect?.addEventListener('change', (e) => {
+      const idx = parseInt(gpSelect.value, 10);
+      const defKey = this.getDefaultKeyForGamepadIndex(idx) || '';
+      if (defKey) {
+        keyInput.value = defKey;
+      }
+    });
+
+    // Button Testing toggle
+    const testingToggle = configurator.querySelector('#btn-testing-toggle');
+    if (testingToggle) {
+      testingToggle.checked = !!this.testingMode;
+      testingToggle.addEventListener('change', () => {
+        this.setTestingMode(!!testingToggle.checked);
+      });
+    }
+
+    // Populate controller select for testing
+    this.updateTestingControllerDropdown();
+    const testingControllerSelect = configurator.querySelector('#testing-controller-select');
+    if (testingControllerSelect) {
+      testingControllerSelect.value = String(this.testingController);
+      testingControllerSelect.addEventListener('change', () => {
+        const val = testingControllerSelect.value;
+        this.testingController = val === 'all' ? 'all' : String(parseInt(val, 10));
+        // Refresh visuals immediately to reflect filter
+        try { this.updateTestingVisual(); } catch (_) {}
+      });
+    }
   }
   
   selectButtonForConfig(group, button, element) {
@@ -923,6 +1050,178 @@ class GamepadManager {
       configurator.classList.remove('visible');
       setTimeout(() => configurator.remove(), 300);
     }
+    // Stop detect mode if active
+    try { this.cancelGamepadButtonDetection(); } catch (_) {}
+    // Turn off testing visuals
+    try { this.setTestingMode(false); } catch (_) {}
+  }
+  
+  // ===== Button Testing (visualize pressed controls) =====
+  setTestingMode(enabled) {
+    this.testingMode = !!enabled;
+    const root = document.querySelector('.controller-configurator');
+    if (root) root.classList.toggle('testing-active', this.testingMode);
+    if (!this.testingMode) this.clearTestingVisual();
+  }
+
+  updateTestingControllerDropdown() {
+    const select = document.querySelector('.controller-configurator #testing-controller-select');
+    if (!select) return;
+    const prev = String(this.testingController);
+    // Clear options
+    while (select.firstChild) select.removeChild(select.firstChild);
+    const addOpt = (value, label) => {
+      const opt = document.createElement('option');
+      opt.value = String(value);
+      opt.textContent = label;
+      select.appendChild(opt);
+    };
+    addOpt('all', 'All Connected');
+    const indices = Object.keys(this.controllers).map(k => parseInt(k, 10)).sort((a,b)=>a-b);
+    for (const idx of indices) {
+      const gp = this.controllers[idx];
+      const id = gp && gp.id ? gp.id : 'Gamepad';
+      const label = `#${idx} — ${id}`;
+      addOpt(idx, label);
+    }
+    // Restore previous selection if still present
+    const values = Array.from(select.options).map(o => o.value);
+    const next = values.includes(prev) ? prev : 'all';
+    this.testingController = next;
+    select.value = next;
+  }
+
+  refreshTestingControllerOptionsIfOpen() {
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) {
+      this.updateTestingControllerDropdown();
+    }
+  }
+
+  clearTestingVisual() {
+    try {
+      const els = document.querySelectorAll('.controller-configurator .controller-svg .config-btn');
+      els.forEach(el => el.classList.remove('testing-pressed'));
+      // Reset stick thumb positions to center
+      const root = document.querySelector('.controller-configurator');
+      const resetThumb = (sel) => {
+        const el = root && root.querySelector(sel);
+        if (!el) return;
+        const cx0 = el.dataset.cx0;
+        const cy0 = el.dataset.cy0;
+        if (cx0 && cy0) {
+          el.setAttribute('cx', cx0);
+          el.setAttribute('cy', cy0);
+        }
+        // Clear any transform that might have been applied elsewhere
+        el.removeAttribute('transform');
+      };
+      resetThumb('.stick-left');
+      resetThumb('.stick-right');
+    } catch (_) {}
+  }
+
+  updateTestingVisual() {
+    const root = document.querySelector('.controller-configurator');
+    if (!root) return;
+    const pressed = this.getAggregatedPressedState();
+
+    const map = [
+      { sel: '.dpad-up', key: 'up' },
+      { sel: '.dpad-down', key: 'down' },
+      { sel: '.dpad-left', key: 'left' },
+      { sel: '.dpad-right', key: 'right' },
+      { sel: '.face-north', key: 'btnTop' },
+      { sel: '.face-south', key: 'btnBottom' },
+      { sel: '.face-west', key: 'btnLeft' },
+      { sel: '.face-east', key: 'btnRight' },
+      { sel: '.shoulder-left', key: 'leftShoulder' },
+      { sel: '.shoulder-right', key: 'rightShoulder' },
+      { sel: '.trigger-left', key: 'leftTrigger' },
+      { sel: '.trigger-right', key: 'rightTrigger' },
+      { sel: '.special-select', key: 'select' },
+      { sel: '.special-start', key: 'start' },
+      { sel: '.stick-left', key: 'leftStick' },
+      { sel: '.stick-right', key: 'rightStick' },
+    ];
+
+    for (const m of map) {
+      const el = root.querySelector(m.sel);
+      if (!el) continue;
+      if (pressed[m.key]) el.classList.add('testing-pressed');
+      else el.classList.remove('testing-pressed');
+    }
+
+    // Show analog stick thumb offsets
+    try {
+      const analog = this.getAggregatedAnalogState();
+      const applyThumb = (sel, stick) => {
+        const el = root.querySelector(sel);
+        if (!el) return;
+        // Cache original center on first run
+        if (!el.dataset.cx0 || !el.dataset.cy0) {
+          el.dataset.cx0 = el.getAttribute('cx') || '0';
+          el.dataset.cy0 = el.getAttribute('cy') || '0';
+        }
+        const cx0 = parseFloat(el.dataset.cx0);
+        const cy0 = parseFloat(el.dataset.cy0);
+        // Max offset within ring (ring r=18, thumb r=8) with small margin
+        const maxOffset = 10; // px
+        const dx = Math.max(-1, Math.min(1, stick.x || 0)) * maxOffset;
+        const dy = Math.max(-1, Math.min(1, stick.y || 0)) * maxOffset;
+        // Clamp to circle radius to avoid leaving ring visually
+        const len = Math.hypot(dx, dy);
+        const limit = maxOffset;
+        const scale = len > limit && len > 0 ? limit / len : 1;
+        const nx = cx0 + dx * scale;
+        const ny = cy0 + dy * scale;
+        el.setAttribute('cx', String(nx));
+        el.setAttribute('cy', String(ny));
+      };
+      applyThumb('.stick-left', analog.leftStick);
+      applyThumb('.stick-right', analog.rightStick);
+    } catch (_) {}
+  }
+
+  getAggregatedPressedState() {
+    const init = () => false;
+    const names = {
+      up: init(), down: init(), left: init(), right: init(),
+      btnTop: init(), btnBottom: init(), btnLeft: init(), btnRight: init(),
+      leftShoulder: init(), rightShoulder: init(), leftTrigger: init(), rightTrigger: init(),
+      select: init(), start: init(), leftStick: init(), rightStick: init(),
+    };
+    const target = this.testingController;
+    const indices = target === 'all' ? Object.keys(this.controllers) : [String(target)];
+    for (let idx of indices) {
+      const bs = this.buttonState[idx] || {};
+      for (let k in names) {
+        if (Object.prototype.hasOwnProperty.call(bs, k)) names[k] = !!(names[k] || bs[k]);
+      }
+    }
+    return names;
+  }
+
+  // Aggregate analog stick positions across the selected testing controller(s)
+  // Returns normalized values in range [-1, 1]
+  getAggregatedAnalogState() {
+    const target = this.testingController;
+    const indices = target === 'all' ? Object.keys(this.controllers) : [String(target)];
+    let count = 0;
+    let lx = 0, ly = 0, rx = 0, ry = 0;
+    for (let idx of indices) {
+      const a = this.analogState[idx];
+      if (!a) continue;
+      lx += a.leftStick?.x || 0;
+      ly += a.leftStick?.y || 0;
+      rx += a.rightStick?.x || 0;
+      ry += a.rightStick?.y || 0;
+      count++;
+    }
+    if (count === 0) return { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
+    return {
+      leftStick: { x: lx / count, y: ly / count },
+      rightStick: { x: rx / count, y: ry / count },
+    };
   }
   
   getKeyCode(key) {
@@ -964,6 +1263,73 @@ class GamepadManager {
     return mapping;
   }
 }
+
+// ===== Detect Gamepad Button feature =====
+GamepadManager.prototype.startGamepadButtonDetection = function(uiRefs) {
+  // Snapshot current pressed state so we only pick up new presses
+  this._detectSnapshot = {};
+  for (let idx in this.controllers) {
+    try {
+      const gp = this.controllers[idx];
+      this._detectSnapshot[idx] = Array.from(gp.buttons || []).map(b => !!(b && b.pressed));
+    } catch (_) { this._detectSnapshot[idx] = []; }
+  }
+  this._detecting = { ui: uiRefs };
+  try { uiRefs.buttonEl.disabled = true; } catch (_) {}
+  try { uiRefs.hintEl.style.display = ''; } catch (_) {}
+};
+
+GamepadManager.prototype.cancelGamepadButtonDetection = function() {
+  if (this._detecting && this._detecting.ui) {
+    const { buttonEl, hintEl } = this._detecting.ui;
+    try { if (buttonEl) buttonEl.disabled = false; } catch (_) {}
+    try { if (hintEl) hintEl.style.display = 'none'; } catch (_) {}
+  }
+  this._detecting = false;
+  this._detectSnapshot = {};
+};
+
+GamepadManager.prototype.handleDetectionTick = function() {
+  if (!this._detecting) return;
+  // If configurator closed, cancel detection
+  if (!(this.isConfiguratorOpen && this.isConfiguratorOpen())) {
+    this.cancelGamepadButtonDetection();
+    return;
+  }
+  for (let idx in this.controllers) {
+    const gp = this.controllers[idx];
+    const snap = this._detectSnapshot[idx] || [];
+    const buttons = gp && gp.buttons ? gp.buttons : [];
+    for (let i = 0; i < buttons.length; i++) {
+      const pressed = !!(buttons[i] && buttons[i].pressed);
+      if (pressed && !snap[i]) {
+        // Assign detected button to the UI select and show the default key
+        try {
+          const selectEl = this._detecting.ui && this._detecting.ui.selectEl;
+          if (selectEl) selectEl.value = String(i);
+          const defKey = this.getDefaultKeyForGamepadIndex(i);
+          const keyInput = document.querySelector('#keyboard-key-input');
+          if (keyInput && defKey) keyInput.value = defKey;
+        } catch (_) {}
+        this.cancelGamepadButtonDetection();
+        return;
+      }
+    }
+  }
+};
+
+GamepadManager.prototype.getDefaultKeyForGamepadIndex = function(idx) {
+  // Search defaultMapping to find the first entry with matching gamepadButton
+  const groups = ['dpad', 'face', 'shoulder', 'special'];
+  for (const g of groups) {
+    const group = this.defaultMapping[g] || {};
+    for (const name in group) {
+      const m = group[name];
+      if (m && m.gamepadButton === idx) return m.keyboardKey;
+    }
+  }
+  return '';
+};
 
 // CSS for Controller Configurator
 const configuratorCSS = `
@@ -1159,6 +1525,74 @@ const configuratorCSS = `
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
+}
+
+/* Inline form group (for testing toggle) */
+.form-group.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.testing-section h3 {
+  color: #ecf0f1;
+  margin: 0 0 10px 0;
+}
+
+.testing-hint {
+  color: #bdc3c7;
+  font-size: 12px;
+  margin: 6px 0 0 0;
+}
+
+/* Toggle switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 24px;
+}
+
+.switch input { display: none; }
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #7f8c8d;
+  transition: .2s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #27ae60;
+}
+
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+/* Visual highlight for pressed buttons during testing */
+.controller-configurator.testing-active .controller-svg .config-btn.testing-pressed {
+  fill: #2ecc71 !important;
+  stroke: #ecf0f1;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px rgba(46, 204, 113, 0.8));
 }
 
 #save-mapping-btn {
