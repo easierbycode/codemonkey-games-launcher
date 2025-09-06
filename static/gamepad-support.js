@@ -590,12 +590,14 @@ class GamepadManager {
     return !!this.testingMode && (this.isConfiguratorOpen && this.isConfiguratorOpen());
   }
 
-  // Swallow inputs only for selected testing controller (or all)
+  // Swallow inputs for ALL controllers while testing is active
+  // Rationale: During live button testing, no controller should
+  // navigate the launcher or close overlays (e.g., via B). The
+  // controller selection only affects visualization aggregation,
+  // not input routing. This prevents other controllers from
+  // interacting with the launcher while testing a single controller.
   shouldSwallowFor(controllerIndex) {
-    if (!(this.isTestingActive && this.isTestingActive())) return false;
-    const sel = this.testingController;
-    if (sel === 'all') return true;
-    return String(controllerIndex) === String(sel);
+    return !!(this.isTestingActive && this.isTestingActive());
   }
 
   getVisibleOSDButtons() {
