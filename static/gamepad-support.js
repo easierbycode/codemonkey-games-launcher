@@ -13,6 +13,7 @@ class GamepadManager {
     this.isRunning = false;
     // Testing mode (visualize presses on configurator SVG)
     this.testingMode = false;
+    this.testingController = 'all'; // 'all' or specific controller index (number or string)
     // OSD navigation state
     this.osdFocusIndex = -1;
     this.wasOSDOpen = false;
@@ -115,11 +116,13 @@ class GamepadManager {
   onGamepadConnected(event) {
     console.log('Gamepad connected:', event.gamepad);
     this.addGamepad(event.gamepad);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   onGamepadDisconnected(event) {
     console.log('Gamepad disconnected:', event.gamepad);
     this.removeGamepad(event.gamepad);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   addGamepad(gamepad) {
@@ -147,12 +150,14 @@ class GamepadManager {
     this.analogState[gamepad.index] = { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
     
     console.log(`Gamepad ${gamepad.index} (${gamepad.id}) added and initialized`);
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   removeGamepad(gamepad) {
     delete this.controllers[gamepad.index];
     delete this.buttonState[gamepad.index];
     delete this.analogState[gamepad.index];
+    this.refreshTestingControllerOptionsIfOpen();
   }
   
   resetButtonStates() {
@@ -213,12 +218,12 @@ class GamepadManager {
         const wasPressed = prevButtonState[buttonName] || false;
         const isPressed = button.pressed;
 
-        const testingActive = (this.isTestingActive && this.isTestingActive());
+        const swallow = this.shouldSwallowFor(controllerIndex);
 
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
-          // While testing is active, swallow inputs entirely (no actions)
-          if (testingActive) {
+          // While testing (for this controller), swallow inputs entirely (no actions)
+          if (swallow) {
             // no-op: allow state update below for visualization
           }
           // B closes controller configurator if open; otherwise fall through
@@ -240,7 +245,7 @@ class GamepadManager {
         }
         // Button release (falling edge)
         else if (!isPressed && wasPressed) {
-          if (testingActive) {
+          if (swallow) {
             // swallow
           } else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
@@ -284,7 +289,7 @@ class GamepadManager {
   
   processAnalogToDigital(stick, controllerIndex, stickName) {
     const threshold = 0.5;
-    if (this.isTestingActive && this.isTestingActive()) {
+    if (this.shouldSwallowFor(controllerIndex)) {
       // Do not route navigation while testing
       const leftPressed = stick.x < -threshold;
       const rightPressed = stick.x > threshold;
@@ -324,7 +329,7 @@ class GamepadManager {
   processLauncherControls(controller, controllerIndex, prevButtonState) {
     if (document.body.classList.contains('playing')) return; // Skip if in game
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
 
     // D-pad navigation
     const dpadMapping = this.currentMapping.dpad;
@@ -370,7 +375,7 @@ class GamepadManager {
   }
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
     const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
 
@@ -426,7 +431,7 @@ class GamepadManager {
   }
 
   processGameMenuControls(controller, controllerIndex, prevButtonState) {
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
+    if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     if (!this.isGameMenuOpen()) return;
 
     const dpadMapping = this.currentMapping.dpad;
@@ -517,7 +522,6 @@ class GamepadManager {
 
   // Routing depending on OSD state
   routeNavigation(direction) {
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     if (this.isGameMenuOpen && this.isGameMenuOpen()) this.handleGameMenuNavigation(direction);
     else if (this.isOSDOpen()) this.handleOSDNavigation(direction);
     else this.handleLauncherNavigation(direction);
@@ -542,7 +546,6 @@ class GamepadManager {
   }
 
   handleLauncherAction(action) {
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     console.log('Launcher action:', action, 'focusedIndex:', window.focusedIndex);
     if (action === 'select' && window.focusIndex && window.focusedIndex !== undefined) {
       console.log('Launching game at index', window.focusedIndex);
@@ -551,7 +554,6 @@ class GamepadManager {
   }
 
   handleStartButton() {
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
     console.log('Start button pressed - showing game menu');
     if (window.showGameMenu && window.focusedIndex !== undefined) {
       const game = window.games ? window.games[window.focusedIndex] : null;
@@ -586,6 +588,14 @@ class GamepadManager {
   // Testing is active only when toggle is on and configurator is open
   isTestingActive() {
     return !!this.testingMode && (this.isConfiguratorOpen && this.isConfiguratorOpen());
+  }
+
+  // Swallow inputs only for selected testing controller (or all)
+  shouldSwallowFor(controllerIndex) {
+    if (!(this.isTestingActive && this.isTestingActive())) return false;
+    const sel = this.testingController;
+    if (sel === 'all') return true;
+    return String(controllerIndex) === String(sel);
   }
 
   getVisibleOSDButtons() {
@@ -647,7 +657,6 @@ class GamepadManager {
     // Only dispatch to games when in playing mode and no overlay is open
     if (!document.body.classList.contains('playing')) return;
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return;
-    if (this.isTestingActive && this.isTestingActive()) return; // Swallow while testing
 
     const iframe = document.querySelector('iframe#gameframe');
 
@@ -857,7 +866,13 @@ class GamepadManager {
                     <span class="slider"></span>
                   </label>
                 </div>
-                <p class="testing-hint">When enabled, pressed controls light up on the diagram.</p>
+                <div class="form-group inline">
+                  <label for="testing-controller-select">Controller:</label>
+                  <select id="testing-controller-select">
+                    <option value="all">All Connected</option>
+                  </select>
+                </div>
+                <p class="testing-hint">When enabled, pressed controls light up on the diagram. Choose a controller to test or leave as All.</p>
               </div>
             </div>
           </div>
@@ -926,6 +941,19 @@ class GamepadManager {
       testingToggle.checked = !!this.testingMode;
       testingToggle.addEventListener('change', () => {
         this.setTestingMode(!!testingToggle.checked);
+      });
+    }
+
+    // Populate controller select for testing
+    this.updateTestingControllerDropdown();
+    const testingControllerSelect = configurator.querySelector('#testing-controller-select');
+    if (testingControllerSelect) {
+      testingControllerSelect.value = String(this.testingController);
+      testingControllerSelect.addEventListener('change', () => {
+        const val = testingControllerSelect.value;
+        this.testingController = val === 'all' ? 'all' : String(parseInt(val, 10));
+        // Refresh visuals immediately to reflect filter
+        try { this.updateTestingVisual(); } catch (_) {}
       });
     }
   }
@@ -1034,6 +1062,39 @@ class GamepadManager {
     if (!this.testingMode) this.clearTestingVisual();
   }
 
+  updateTestingControllerDropdown() {
+    const select = document.querySelector('.controller-configurator #testing-controller-select');
+    if (!select) return;
+    const prev = String(this.testingController);
+    // Clear options
+    while (select.firstChild) select.removeChild(select.firstChild);
+    const addOpt = (value, label) => {
+      const opt = document.createElement('option');
+      opt.value = String(value);
+      opt.textContent = label;
+      select.appendChild(opt);
+    };
+    addOpt('all', 'All Connected');
+    const indices = Object.keys(this.controllers).map(k => parseInt(k, 10)).sort((a,b)=>a-b);
+    for (const idx of indices) {
+      const gp = this.controllers[idx];
+      const id = gp && gp.id ? gp.id : 'Gamepad';
+      const label = `#${idx} — ${id}`;
+      addOpt(idx, label);
+    }
+    // Restore previous selection if still present
+    const values = Array.from(select.options).map(o => o.value);
+    const next = values.includes(prev) ? prev : 'all';
+    this.testingController = next;
+    select.value = next;
+  }
+
+  refreshTestingControllerOptionsIfOpen() {
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) {
+      this.updateTestingControllerDropdown();
+    }
+  }
+
   clearTestingVisual() {
     try {
       const els = document.querySelectorAll('.controller-configurator .controller-svg .config-btn');
@@ -1081,7 +1142,9 @@ class GamepadManager {
       leftShoulder: init(), rightShoulder: init(), leftTrigger: init(), rightTrigger: init(),
       select: init(), start: init(), leftStick: init(), rightStick: init(),
     };
-    for (let idx in this.controllers) {
+    const target = this.testingController;
+    const indices = target === 'all' ? Object.keys(this.controllers) : [String(target)];
+    for (let idx of indices) {
       const bs = this.buttonState[idx] || {};
       for (let k in names) {
         if (Object.prototype.hasOwnProperty.call(bs, k)) names[k] = !!(names[k] || bs[k]);
