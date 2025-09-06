@@ -312,6 +312,147 @@ const handler = async (req: Request) => {
   const apiRes = await handleApi(req);
   if (apiRes) return apiRes;
 
+  // Allow top-level game aliases like /mario/* to resolve to /games/mario/*
+  // This helps when bundled games reference absolute asset paths (e.g., "/mario/main.js")
+  {
+    const p = url.pathname;
+    // Ignore known prefixes
+    const ignored = ["api", "static", "assets", "vendor", "games"];
+    if (p.startsWith("/") && p.length > 1) {
+      const first = p.split("/")[1];
+      if (first && !ignored.includes(first)) {
+        const maybeDir = join(GAMES_DIR, first);
+        try {
+          const st = await Deno.stat(maybeDir);
+          if (st.isDirectory) {
+            const after = p.slice(("/" + first).length);
+            const rel = decodeURIComponent(after.startsWith("/") ? after.slice(1) : after);
+            const filePath = rel === "" || rel.endsWith("/") ? join(maybeDir, "index.html") : join(maybeDir, rel);
+            try {
+              let data: Uint8Array = await Deno.readFile(filePath);
+              let headersCt = (() => {
+                const fp = filePath.toLowerCase();
+                if (fp.endsWith('.js') || fp.endsWith('.mjs')) return 'text/javascript';
+                if (fp.endsWith('.css')) return 'text/css';
+                if (fp.endsWith('.html')) return 'text/html; charset=utf-8';
+                if (fp.endsWith('.png')) return 'image/png';
+                if (fp.endsWith('.jpg') || fp.endsWith('.jpeg')) return 'image/jpeg';
+                if (fp.endsWith('.gif')) return 'image/gif';
+                if (fp.endsWith('.svg')) return 'image/svg+xml';
+                return contentType(filePath) ?? 'application/octet-stream';
+              })();
+              const isIndex = (
+                filePath.toLowerCase().endsWith("/index.html") ||
+                filePath.toLowerCase().endsWith("\\index.html") ||
+                url.pathname.endsWith("/index.html") ||
+                url.pathname === "/" + first ||
+                url.pathname === "/" + first + "/"
+              );
+              if (isIndex) {
+                try {
+                  const html = new TextDecoder().decode(data);
+                  const cssInjection = `\n<style>
+                    html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+                    canvas{display:block;}
+                    ::-webkit-scrollbar{display:none}
+                    /* Hide cursor by default inside all games */
+                    html, body { cursor: none !important; }
+                    /* When parent requests cursor visibility (e.g., Game OSD), allow it */
+                    html.cmg-cursor-visible, body.cmg-cursor-visible, .cmg-cursor-visible * { cursor: auto !important; }
+                  </style>\n`;
+                  const osdInjection = `\n<script>(function(){
+                    function shouldOpen(e){return (e.code==='Backquote'||e.keyCode===192||e.which===192);} 
+                    function onKey(e){ if(shouldOpen(e)){ try{ parent.postMessage({cmg:'osd',action:'open'}, location.origin); }catch(_){} if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); if(e.stopImmediatePropagation) e.stopImmediatePropagation(); }
+                      var k=e.key||e.code; if(k==='Escape'){ try{ parent.postMessage({cmg:'osd',action:'exit'}, location.origin); }catch(_){}} }
+                    try{ document.addEventListener('keydown', onKey, true); window.addEventListener('keydown', onKey, true);}catch(_){}}
+                  )();</script>\n`;
+                  const disableContextMenuInjection = `\n<script>(function(){
+                    try{
+                      var handler=function(e){ if(e && e.preventDefault) e.preventDefault(); if(e && e.stopPropagation) e.stopPropagation(); if(e && e.stopImmediatePropagation) e.stopImmediatePropagation(); return false; };
+                      window.addEventListener('contextmenu', handler, true);
+                      document.addEventListener('contextmenu', handler, true);
+                    }catch(_){/* ignore */}
+                  })();</script>\n`;
+                  const localStorageInjection = `\n<script>(function(){
+                    // Fix localStorage issues in iframe context
+                    var originalJSONParse = JSON.parse;
+                    JSON.parse = function(text) {
+                      if (text === undefined || text === null || text === 'undefined') {
+                        return null;
+                      }
+                      return originalJSONParse.call(this, text);
+                    };
+                    // Ensure localStorage works in iframe
+                    if (window.parent !== window && !window.localStorage) {
+                      window.localStorage = {
+                        data: {},
+                        getItem: function(key) { return this.data[key] || null; },
+                        setItem: function(key, value) { this.data[key] = String(value); },
+                        removeItem: function(key) { delete this.data[key]; },
+                        clear: function() { this.data = {}; },
+                        get length() { return Object.keys(this.data).length; },
+                        key: function(index) { return Object.keys(this.data)[index] || null; }
+                      };
+                      for (let i = 0; i < Object.keys(window.localStorage.data).length; i++) {
+                        let key = Object.keys(window.localStorage.data)[i];
+                        Object.defineProperty(window.localStorage, key, {
+                          get: function() { return this.getItem(key); },
+                          set: function(value) { this.setItem(key, value); },
+                          configurable: true
+                        });
+                      }
+                    }
+                  })();</script>\n`;
+                  const cursorToggleInjection = `\n<script>(function(){
+                    try {
+                      function setCursorVisible(v){
+                        try{
+                          var root=document.documentElement; var body=document.body;
+                          if(v){ root && root.classList.add('cmg-cursor-visible'); body && body.classList.add('cmg-cursor-visible'); }
+                          else { root && root.classList.remove('cmg-cursor-visible'); body && body.classList.remove('cmg-cursor-visible'); }
+                        }catch(_){}
+                      }
+                      // Default hidden
+                      setCursorVisible(false);
+                      // Listen for parent messages to toggle cursor visibility
+                      window.addEventListener('message', function(ev){
+                        try{
+                          if(!ev || !ev.data) return;
+                          var msg = ev.data;
+                          if (msg && msg.cmg === 'cursor') {
+                            setCursorVisible(!!msg.visible);
+                          }
+                        }catch(_){/*ignore*/}
+                      }, true);
+                    } catch(_){/* ignore */}
+                  })();</script>\n`;
+                  const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection;
+                  let out = html;
+                  if (/<head[^>]*>/i.test(html)) {
+                    out = html.replace(/<head[^>]*>/i, (m) => m + injected);
+                  } else if (/^<!doctype[^>]*>/i.test(html)) {
+                    out = html.replace(/^<!doctype[^>]*>/i, (m) => m + injected);
+                  } else if (/<html[^>]*>/i.test(html)) {
+                    out = html.replace(/<html[^>]*>/i, (m) => m + injected);
+                  } else {
+                    out = injected + html; // Fallback
+                  }
+                  data = new TextEncoder().encode(out) as Uint8Array;
+                  headersCt = 'text/html; charset=utf-8';
+                } catch {}
+              }
+              return new Response(data, { headers: { "content-type": headersCt } });
+            } catch (_) {
+              return new Response("Not Found", { status: 404 });
+            }
+          }
+        } catch {
+          // Not a game alias; continue
+        }
+      }
+    }
+  }
+
   // Serve games directory at /games/ manually for predictable behavior
   if (url.pathname.startsWith("/games/")) {
     const rel = decodeURIComponent(url.pathname.replace(/^\/games\//, ""));
