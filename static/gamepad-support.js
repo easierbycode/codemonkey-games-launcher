@@ -1101,6 +1101,22 @@ class GamepadManager {
     try {
       const els = document.querySelectorAll('.controller-configurator .controller-svg .config-btn');
       els.forEach(el => el.classList.remove('testing-pressed'));
+      // Reset stick thumb positions to center
+      const root = document.querySelector('.controller-configurator');
+      const resetThumb = (sel) => {
+        const el = root && root.querySelector(sel);
+        if (!el) return;
+        const cx0 = el.dataset.cx0;
+        const cy0 = el.dataset.cy0;
+        if (cx0 && cy0) {
+          el.setAttribute('cx', cx0);
+          el.setAttribute('cy', cy0);
+        }
+        // Clear any transform that might have been applied elsewhere
+        el.removeAttribute('transform');
+      };
+      resetThumb('.stick-left');
+      resetThumb('.stick-right');
     } catch (_) {}
   }
 
@@ -1134,6 +1150,36 @@ class GamepadManager {
       if (pressed[m.key]) el.classList.add('testing-pressed');
       else el.classList.remove('testing-pressed');
     }
+
+    // Show analog stick thumb offsets
+    try {
+      const analog = this.getAggregatedAnalogState();
+      const applyThumb = (sel, stick) => {
+        const el = root.querySelector(sel);
+        if (!el) return;
+        // Cache original center on first run
+        if (!el.dataset.cx0 || !el.dataset.cy0) {
+          el.dataset.cx0 = el.getAttribute('cx') || '0';
+          el.dataset.cy0 = el.getAttribute('cy') || '0';
+        }
+        const cx0 = parseFloat(el.dataset.cx0);
+        const cy0 = parseFloat(el.dataset.cy0);
+        // Max offset within ring (ring r=18, thumb r=8) with small margin
+        const maxOffset = 10; // px
+        const dx = Math.max(-1, Math.min(1, stick.x || 0)) * maxOffset;
+        const dy = Math.max(-1, Math.min(1, stick.y || 0)) * maxOffset;
+        // Clamp to circle radius to avoid leaving ring visually
+        const len = Math.hypot(dx, dy);
+        const limit = maxOffset;
+        const scale = len > limit && len > 0 ? limit / len : 1;
+        const nx = cx0 + dx * scale;
+        const ny = cy0 + dy * scale;
+        el.setAttribute('cx', String(nx));
+        el.setAttribute('cy', String(ny));
+      };
+      applyThumb('.stick-left', analog.leftStick);
+      applyThumb('.stick-right', analog.rightStick);
+    } catch (_) {}
   }
 
   getAggregatedPressedState() {
@@ -1153,6 +1199,29 @@ class GamepadManager {
       }
     }
     return names;
+  }
+
+  // Aggregate analog stick positions across the selected testing controller(s)
+  // Returns normalized values in range [-1, 1]
+  getAggregatedAnalogState() {
+    const target = this.testingController;
+    const indices = target === 'all' ? Object.keys(this.controllers) : [String(target)];
+    let count = 0;
+    let lx = 0, ly = 0, rx = 0, ry = 0;
+    for (let idx of indices) {
+      const a = this.analogState[idx];
+      if (!a) continue;
+      lx += a.leftStick?.x || 0;
+      ly += a.leftStick?.y || 0;
+      rx += a.rightStick?.x || 0;
+      ry += a.rightStick?.y || 0;
+      count++;
+    }
+    if (count === 0) return { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
+    return {
+      leftStick: { x: lx / count, y: ly / count },
+      rightStick: { x: rx / count, y: ry / count },
+    };
   }
   
   getKeyCode(key) {
