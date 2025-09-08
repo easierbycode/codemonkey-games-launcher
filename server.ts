@@ -1,3 +1,66 @@
+// --- Protocol Handler Logic ---
+// Check if the app was launched with a custom protocol URL
+if (Deno.args.length > 0 && Deno.args[0].startsWith("codemonkey://")) {
+  try {
+    const url = new URL(Deno.args[0]);
+    const repo = url.searchParams.get("repo");
+    const branch = url.searchParams.get("branch");
+    const subdir = url.searchParams.get("folder"); // 'folder' from extension, 'subdir' for API
+
+    if (repo) {
+      console.log(`Adding game from GitHub: ${repo}`);
+
+      // Function to wait for the server to be ready
+      const waitForServer = async (retries = 5, delay = 500) => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const resp = await fetch("http://localhost:8000/api/games");
+            if (resp.ok) {
+              console.log("Server is up.");
+              return true;
+            }
+          } catch {
+            // Ignore connection errors
+          }
+          console.log(`Server not ready, retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        return false;
+      };
+
+      let serverIsUp = await waitForServer(1, 100); // Quick initial check
+
+      if (!serverIsUp) {
+        console.log("Server not detected. Launching in background...");
+        new Deno.Command(Deno.execPath(), {
+          args: ["run", "-A", "server.ts"],
+        }).spawn();
+        serverIsUp = await waitForServer(5, 1000); // Wait longer after launch
+      }
+
+      if (!serverIsUp) {
+        throw new Error("Server did not start in time. Cannot add game.");
+      }
+
+      const addResp = await fetch("http://localhost:8000/api/add-game/from-github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo, branch, subdir }),
+      });
+
+      if (addResp.ok) {
+        console.log("Successfully added game via API.");
+      } else {
+        console.error("Failed to add game via API:", await addResp.text());
+      }
+    }
+  } catch (error) {
+    console.error("Failed to handle protocol URL:", error);
+  }
+  Deno.exit();
+}
+// --- End Protocol Handler Logic ---
+
 // Deno web app server for launching Phaser/Kaplay games
 // Serves static frontend and manages game library under ./games
 
