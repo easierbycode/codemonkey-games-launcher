@@ -251,9 +251,28 @@ captureThumbBtn.addEventListener('click', async () => {
 async function captureIframeCanvas(iframe) {
   const doc = iframe.contentDocument;
   if (!doc) return null;
-  const canvas = doc.querySelector('canvas');
-  if (!canvas) return null;
-  return canvas.toDataURL('image/png');
+  const canvases = Array.from(doc.querySelectorAll('canvas'));
+  if (!canvases.length) return null;
+  // Prefer visible canvases, then pick the one with the largest pixel area
+  const visible = canvases.filter(c => (c.offsetWidth > 0 && c.offsetHeight > 0));
+  const pickFrom = visible.length ? visible : canvases;
+  const target = pickFrom.sort((a, b) => (a.width * a.height) - (b.width * b.height)).pop();
+  if (!target) return null;
+  const w = target.width || target.offsetWidth;
+  const h = target.height || target.offsetHeight;
+  if (!w || !h) return null;
+  // Copy to an offscreen 2D canvas to normalize output and avoid directly reading WebGL buffer
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const ctx = off.getContext('2d');
+  if (!ctx) return null;
+  try {
+    ctx.drawImage(target, 0, 0, w, h);
+    return off.toDataURL('image/png');
+  } catch (e) {
+    // Fallback: try direct toDataURL on the target
+    try { return target.toDataURL('image/png'); } catch { return null; }
+  }
 }
 
 // Add Game (ZIP)

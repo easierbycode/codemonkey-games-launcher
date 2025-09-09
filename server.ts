@@ -641,7 +641,21 @@ const handler = async (req: Request) => {
               }, true);
             } catch(_){/* ignore */}
           })();</script>\n`;
-          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection;
+          const screenshotPreserveInjection = `\n<script>(function(){
+            // Ensure WebGL canvases retain their drawing buffer for screenshots
+            try {
+              var origGetContext = HTMLCanvasElement.prototype.getContext;
+              HTMLCanvasElement.prototype.getContext = function(type, attrs){
+                try{
+                  if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+                    attrs = Object.assign({}, attrs || {}, { preserveDrawingBuffer: true });
+                  }
+                }catch(_){/* ignore */}
+                return origGetContext.call(this, type, attrs);
+              };
+            } catch(_){/* ignore */}
+          })();</script>\n`;
+          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection;
           let out = html;
           // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
           if (/<head[^>]*>/i.test(html)) {
@@ -778,7 +792,21 @@ const handler = async (req: Request) => {
                     }, true);
                   } catch(_){/* ignore */}
                 })();</script>\n`;
-                const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection;
+            const screenshotPreserveInjection = `\n<script>(function(){
+                  // Ensure WebGL canvases retain their drawing buffer for screenshots
+                  try {
+                    var origGetContext = HTMLCanvasElement.prototype.getContext;
+                    HTMLCanvasElement.prototype.getContext = function(type, attrs){
+                      try{
+                        if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+                          attrs = Object.assign({}, attrs || {}, { preserveDrawingBuffer: true });
+                        }
+                      }catch(_){/* ignore */}
+                      return origGetContext.call(this, type, attrs);
+                    };
+                  } catch(_){/* ignore */}
+                })();</script>\n`;
+            const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection;
                 let out = html;
                 // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
                 if (/<head[^>]*>/i.test(html)) {
