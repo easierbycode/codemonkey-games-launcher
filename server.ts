@@ -664,7 +664,20 @@ const handler = async (req: Request) => {
               };
             } catch(_){/* ignore */}
           })();</script>\n`;
-          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection;
+          const markerInjection = `\n<script>(function(){
+            try {
+              window.__CMG_LAUNCHER__ = true;
+              window.__CMG__ = Object.freeze({ launcher: true, name: 'codemonkey-games-launcher' });
+              try { document.documentElement.setAttribute('data-cmg-launcher', '1'); } catch(_){/* ignore */}
+              try { document.documentElement.classList.add('inLauncher'); } catch(_){/* ignore */}
+              // Also mark body once available
+              try {
+                if (document.body) document.body.classList.add('inLauncher');
+                else document.addEventListener('DOMContentLoaded', function(){ try{ document.body && document.body.classList.add('inLauncher'); }catch(_){/*ignore*/} }, { once: true });
+              } catch(_){/* ignore */}
+            } catch(_){/* ignore */}
+          })();</script>\n`;
+          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection;
           let out = html;
           // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
           if (/<head[^>]*>/i.test(html)) {
@@ -815,7 +828,19 @@ const handler = async (req: Request) => {
                     };
                   } catch(_){/* ignore */}
                 })();</script>\n`;
-            const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection;
+            const markerInjection = `\n<script>(function(){
+                  try {
+                    window.__CMG_LAUNCHER__ = true;
+                    window.__CMG__ = Object.freeze({ launcher: true, name: 'codemonkey-games-launcher' });
+                    try { document.documentElement.setAttribute('data-cmg-launcher', '1'); } catch(_){/* ignore */}
+                    try { document.documentElement.classList.add('inLauncher'); } catch(_){/* ignore */}
+                    try {
+                      if (document.body) document.body.classList.add('inLauncher');
+                      else document.addEventListener('DOMContentLoaded', function(){ try{ document.body && document.body.classList.add('inLauncher'); }catch(_){/*ignore*/} }, { once: true });
+                    } catch(_){/* ignore */}
+                  } catch(_){/* ignore */}
+                })();</script>\n`;
+            const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection;
                 let out = html;
                 // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
                 if (/<head[^>]*>/i.test(html)) {
