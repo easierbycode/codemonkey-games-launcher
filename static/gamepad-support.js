@@ -56,6 +56,9 @@ class GamepadManager {
     
     // Load saved mapping or use default
     this.currentMapping = this.loadMapping();
+
+    // Layout preferences
+    this.useWASDForDpad = this.loadUseWASDPreference();
     
     this.init();
   }
@@ -239,7 +242,8 @@ class GamepadManager {
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = true;
             // Overlay-specific handling handled elsewhere
           } else {
-            this.dispatchKeyboardEvent('keydown', mapping);
+            const eff = this.getEffectiveMappingForLayout(groupName, buttonName, mapping);
+            this.dispatchKeyboardEvent('keydown', eff);
             this.handleSpecialActions(groupName, buttonName, controllerIndex);
           }
         }
@@ -251,13 +255,34 @@ class GamepadManager {
             if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
             if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = false;
           } else {
-            this.dispatchKeyboardEvent('keyup', mapping);
+            const eff = this.getEffectiveMappingForLayout(groupName, buttonName, mapping);
+            this.dispatchKeyboardEvent('keyup', eff);
           }
         }
 
         this.buttonState[controllerIndex][buttonName] = isPressed;
       }
     }
+  }
+
+  // Map Arrow keys to WASD when enabled for D-pad only
+  getEffectiveMappingForLayout(groupName, buttonName, mapping) {
+    try {
+      if (groupName === 'dpad' && this.useWASDForDpad) {
+        const map = {
+          up: 'w',
+          down: 's',
+          left: 'a',
+          right: 'd',
+        };
+        const k = map[buttonName];
+        if (k) {
+          const keyCode = this.getKeyCode(k);
+          return { ...mapping, keyboardKey: k, keyCode };
+        }
+      }
+    } catch (_) {}
+    return mapping;
   }
   
   processAnalogSticks(controller, controllerIndex) {
@@ -821,6 +846,17 @@ class GamepadManager {
                   <p>Click a button to configure it</p>
                 </div>
               </div>
+
+              <div class="layout-section" id="layout-section">
+                <h3>Controller Layout</h3>
+                <div class="form-group inline">
+                  <label for="wasd-toggle">Use WASD for D-pad:</label>
+                  <label class="switch">
+                    <input type="checkbox" id="wasd-toggle" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
               
               <div class="mapping-form" id="mapping-form" style="display: none;">
                 <h4>Configure <span id="config-button-name"></span></h4>
@@ -943,6 +979,15 @@ class GamepadManager {
       testingToggle.checked = !!this.testingMode;
       testingToggle.addEventListener('change', () => {
         this.setTestingMode(!!testingToggle.checked);
+      });
+    }
+
+    // WASD layout toggle
+    const wasdToggle = configurator.querySelector('#wasd-toggle');
+    if (wasdToggle) {
+      wasdToggle.checked = !!this.useWASDForDpad;
+      wasdToggle.addEventListener('change', () => {
+        this.setUseWASDForDpad(!!wasdToggle.checked);
       });
     }
 
@@ -1236,6 +1281,19 @@ class GamepadManager {
     };
     
     return keyCodeMap[key] || key.charCodeAt(0);
+  }
+
+  // ===== Preferences (WASD layout) =====
+  setUseWASDForDpad(enabled) {
+    this.useWASDForDpad = !!enabled;
+    try { localStorage.setItem('gamepadUseWASD', this.useWASDForDpad ? '1' : '0'); } catch (_) {}
+  }
+
+  loadUseWASDPreference() {
+    try {
+      const v = localStorage.getItem('gamepadUseWASD');
+      return v === '1' || v === 'true';
+    } catch (_) { return false; }
   }
   
   saveMapping() {
