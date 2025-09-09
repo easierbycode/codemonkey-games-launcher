@@ -952,6 +952,58 @@ const handler = async (req: Request) => {
     return serveDir(req, { fsRoot: ROOT, quiet: true });
   }
 
+  // Alias by Referer: handle apps built with absolute base paths different from game folder
+  // Example: game installed as /games/ronagun but HTML references "/evil-invaders-svite/*".
+  // If the Referer is a game page, strip the first segment and serve from that game's folder.
+  {
+    const p = url.pathname;
+    if (p.startsWith("/") && p.length > 1) {
+      const first = p.split("/")[1];
+      const reserved = new Set(["", "static", "assets", "vendor", "api", "games"]);
+      if (!reserved.has(first)) {
+        const ref = req.headers.get("referer") || req.headers.get("referrer");
+        if (ref) {
+          try {
+            const ru = new URL(ref);
+            const rpath = ru.pathname || "";
+            let gameId: string | null = null;
+            if (rpath.startsWith("/games/")) {
+              const seg = rpath.split("/")[2];
+              if (seg) gameId = seg;
+            } else if (/^\/[A-Za-z0-9_-]+\/?/.test(rpath)) {
+              const seg = rpath.split("/")[1];
+              // Only treat as game ID if folder exists
+              try {
+                const st = await Deno.stat(join(GAMES_DIR, seg));
+                if (st.isDirectory) gameId = seg;
+              } catch {}
+            }
+            if (gameId) {
+              const rest = p.slice(("/" + first).length);
+              const rel = rest.startsWith("/") ? rest.slice(1) : rest;
+              const filePath = join(GAMES_DIR, gameId, rel);
+              try {
+                const data = await Deno.readFile(filePath);
+                const ct = (() => {
+                  const fp = filePath.toLowerCase();
+                  if (fp.endsWith('.js') || fp.endsWith('.mjs')) return 'text/javascript';
+                  if (fp.endsWith('.css')) return 'text/css';
+                  if (fp.endsWith('.html')) return 'text/html; charset=utf-8';
+                  if (fp.endsWith('.png')) return 'image/png';
+                  if (fp.endsWith('.jpg') || fp.endsWith('.jpeg')) return 'image/jpeg';
+                  if (fp.endsWith('.gif')) return 'image/gif';
+                  if (fp.endsWith('.svg')) return 'image/svg+xml';
+                  return contentType(filePath) ?? 'application/octet-stream';
+                })();
+                return new Response(data, { headers: { 'content-type': ct } });
+              } catch { /* not found; continue */ }
+            }
+          } catch { /* ignore bad referer */ }
+        }
+      }
+    }
+  }
+
   // Default to index.html for SPA routing (unknown routes)
   const indexFile = await Deno.readFile(join(ROOT, "static", "index.html"));
   return new Response(indexFile, { headers: { "content-type": "text/html; charset=utf-8" } });
