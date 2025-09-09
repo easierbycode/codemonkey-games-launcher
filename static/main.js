@@ -194,9 +194,14 @@ function toggleOSD(show) {
   if (osdTitle) {
     osdTitle.textContent = global ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
   }
-  // Inform the game iframe to show/hide cursor only for in-game OSD
+  // Inform the game iframe to show/hide cursor and block inputs when game OSD is open
   if (!global) {
-    try { gameframe.contentWindow && gameframe.contentWindow.postMessage({ cmg: 'cursor', visible: !!show }, location.origin); } catch {}
+    try {
+      if (gameframe.contentWindow) {
+        gameframe.contentWindow.postMessage({ cmg: 'cursor', visible: !!show }, location.origin);
+        gameframe.contentWindow.postMessage({ cmg: 'input', blocked: !!show }, location.origin);
+      }
+    } catch {}
   }
 }
 osdClose.addEventListener('click', () => toggleOSD(false));

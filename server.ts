@@ -677,7 +677,46 @@ const handler = async (req: Request) => {
               } catch(_){/* ignore */}
             } catch(_){/* ignore */}
           })();</script>\n`;
-          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection;
+          const gamepadBlockInjection = `\n<script>(function(){
+            try {
+              var __cmg_input_blocked = false;
+              window.addEventListener('message', function(ev){
+                try{
+                  if(!ev || !ev.data) return;
+                  var msg = ev.data;
+                  if (msg && msg.cmg === 'input') { __cmg_input_blocked = !!msg.blocked; }
+                }catch(_){/*ignore*/}
+              }, true);
+              function clonePad(p){
+                if (!p) return p;
+                var btns = Array.from(p.buttons || []).map(function(){ return { pressed:false, touched:false, value:0 }; });
+                var axes = Array.from(p.axes || []).map(function(){ return 0; });
+                try {
+                  return new Proxy(p, {
+                    get: function(target, prop){
+                      if (prop === 'buttons') return btns;
+                      if (prop === 'axes') return axes;
+                      if (prop === 'connected') return target.connected;
+                      return target[prop];
+                    }
+                  });
+                } catch(_) {
+                  return { id:p.id, index:p.index, mapping:p.mapping, connected:p.connected, timestamp:p.timestamp, buttons:btns, axes:axes };
+                }
+              }
+              var origGet = (Navigator.prototype && Navigator.prototype.getGamepads) || (navigator && navigator.getGamepads);
+              if (origGet) {
+                var wrapped = function(){
+                  var r = origGet.call(navigator) || [];
+                  if (!__cmg_input_blocked) return r;
+                  try { return Array.from(r).map(clonePad); } catch(_) { return r; }
+                };
+                try { Object.defineProperty(Navigator.prototype, 'getGamepads', { configurable:true, writable:true, value: wrapped }); } catch(_){/* ignore */}
+                try { navigator.getGamepads = wrapped; } catch(_){/* ignore */}
+              }
+            } catch(_){/* ignore */}
+          })();</script>\n`;
+          const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection + gamepadBlockInjection;
           let out = html;
           // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
           if (/<head[^>]*>/i.test(html)) {
@@ -840,7 +879,46 @@ const handler = async (req: Request) => {
                     } catch(_){/* ignore */}
                   } catch(_){/* ignore */}
                 })();</script>\n`;
-            const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection;
+            const gamepadBlockInjection = `\n<script>(function(){
+                  try {
+                    var __cmg_input_blocked = false;
+                    window.addEventListener('message', function(ev){
+                      try{
+                        if(!ev || !ev.data) return;
+                        var msg = ev.data;
+                        if (msg && msg.cmg === 'input') { __cmg_input_blocked = !!msg.blocked; }
+                      }catch(_){/*ignore*/}
+                    }, true);
+                    function clonePad(p){
+                      if (!p) return p;
+                      var btns = Array.from(p.buttons || []).map(function(){ return { pressed:false, touched:false, value:0 }; });
+                      var axes = Array.from(p.axes || []).map(function(){ return 0; });
+                      try {
+                        return new Proxy(p, {
+                          get: function(target, prop){
+                            if (prop === 'buttons') return btns;
+                            if (prop === 'axes') return axes;
+                            if (prop === 'connected') return target.connected;
+                            return target[prop];
+                          }
+                        });
+                      } catch(_) {
+                        return { id:p.id, index:p.index, mapping:p.mapping, connected:p.connected, timestamp:p.timestamp, buttons:btns, axes:axes };
+                      }
+                    }
+                    var origGet = (Navigator.prototype && Navigator.prototype.getGamepads) || (navigator && navigator.getGamepads);
+                    if (origGet) {
+                      var wrapped = function(){
+                        var r = origGet.call(navigator) || [];
+                        if (!__cmg_input_blocked) return r;
+                        try { return Array.from(r).map(clonePad); } catch(_) { return r; }
+                      };
+                      try { Object.defineProperty(Navigator.prototype, 'getGamepads', { configurable:true, writable:true, value: wrapped }); } catch(_){/* ignore */}
+                      try { navigator.getGamepads = wrapped; } catch(_){/* ignore */}
+                    }
+                  } catch(_){/* ignore */}
+                })();</script>\n`;
+            const injected = cssInjection + localStorageInjection + cursorToggleInjection + disableContextMenuInjection + osdInjection + screenshotPreserveInjection + markerInjection + gamepadBlockInjection;
                 let out = html;
                 // Prefer injecting inside <head> when possible to avoid breaking DOCTYPE
                 if (/<head[^>]*>/i.test(html)) {
