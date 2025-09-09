@@ -393,9 +393,18 @@ const PORT = Number(Deno.env.get("PORT") ?? "8000");
 const handler = async (req: Request) => {
   const url = new URL(req.url);
 
-  // API routes
-  const apiRes = await handleApi(req);
-  if (apiRes) return apiRes;
+  // API routes (robust error handling so client never sees empty response)
+  try {
+    const apiRes = await handleApi(req);
+    if (apiRes) return apiRes;
+  } catch (e) {
+    try { console.error("API route error:", e); } catch {}
+    const msg = (e && (e as Error).message) ? (e as Error).message : "Internal Server Error";
+    return new Response(JSON.stringify({ ok: false, error: msg }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   // Allow top-level game aliases like /mario/* to resolve to /games/mario/*
   // This helps when bundled games reference absolute asset paths (e.g., "/mario/main.js")
