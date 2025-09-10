@@ -59,6 +59,11 @@ class GamepadManager {
 
     // Layout preferences
     this.useWASDForDpad = this.loadUseWASDPreference();
+
+    // Start button preferences
+    this.simulateTouchOnStart = this.loadStartTouchPreference();
+    this.touchTargetSelector = this.loadTouchTargetPreference();
+    this.startSceneName = this.loadStartScenePreference();
     
     this.init();
   }
@@ -225,6 +230,15 @@ class GamepadManager {
 
         // Button press (rising edge)
         if (isPressed && !wasPressed) {
+          // Intercept Start while in-game for custom actions (simulate touch / Phaser scene start)
+          if (!swallow && groupName === 'special' && buttonName === 'start') {
+            const handled = this.handleStartInGame();
+            if (handled) {
+              // Latch state and skip default dispatch
+              this.buttonState[controllerIndex][buttonName] = isPressed;
+              return;
+            }
+          }
           // While testing (for this controller), swallow inputs entirely (no actions)
           if (swallow) {
             // no-op: allow state update below for visualization
@@ -588,6 +602,167 @@ class GamepadManager {
     }
   }
 
+  // Handle Start press when in-game: simulate a click and/or start a Phaser scene
+  handleStartInGame() {
+    try {
+      // Only act when a game is running and no overlays are open
+      const inGame = document.body.classList.contains('playing');
+      if (!inGame) return false;
+      if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return false;
+
+      // Try starting a Phaser scene if configured
+      const sceneName = (this.startSceneName || '').trim();
+      if (sceneName) {
+        try { this.tryStartPhaserScene(sceneName); } catch (_) {}
+      }
+
+      // Simulate click if enabled (default)
+      if (this.simulateTouchOnStart) {
+        try { this.dispatchSyntheticClick(); } catch (e) { console.warn('Synthetic click failed', e); }
+      }
+      return true;
+    } catch (_) { return false; }
+  }
+
+  // Attempt to start a Phaser scene inside the iframe using common globals
+  tryStartPhaserScene(sceneName) {
+    const iframe = document.querySelector('iframe#gameframe');
+    if (!iframe) return false;
+    let ok = false;
+    try {
+      const w = iframe.contentWindow;
+      if (!w) return false;
+      // window.gameScene
+      try {
+        const gs = w.gameScene || w.window?.gameScene;
+        if (gs && gs.scene && typeof gs.scene.start === 'function') {
+          gs.scene.start(sceneName);
+          ok = true;
+        }
+      } catch (_) {}
+      // globalThis.__PHASER_GAME__
+      if (!ok) {
+        try {
+          const g = w.__PHASER_GAME__ || w.globalThis?.__PHASER_GAME__;
+          const scene = g && g.scene && g.scene.scenes && g.scene.scenes[0] && g.scene.scenes[0].scene;
+          if (scene && typeof scene.start === 'function') {
+            scene.start(sceneName);
+            ok = true;
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('Error attempting Phaser scene start:', err);
+    }
+    return ok;
+  }
+
+  // Dispatch a quick click (pointer/mouse/click) to a target inside the iframe (searches nested frames if a selector is provided)
+  dispatchSyntheticClick() {
+    const iframe = document.querySelector('iframe#gameframe');
+    if (!iframe) return false;
+    try {
+      const doc = iframe.contentDocument;
+      const win = iframe.contentWindow;
+      if (!doc || !win) return false;
+
+      // If not fully loaded, defer until load completes
+      if (doc.readyState !== 'complete') {
+        try { iframe.addEventListener('load', () => { try { this.dispatchSyntheticClick(); } catch(_){} }, { once: true }); } catch (_) {}
+        return true;
+      }
+
+      // Resolve target element
+      let target = null;
+      const sel = (this.touchTargetSelector || '').trim();
+      if (sel) {
+        target = this.findInFrames(iframe, sel) || null;
+      }
+      if (!target) {
+        // Prefer visible canvas across nested frames; fallback to first canvas in outer; else body
+        target = this.findInFrames(iframe, 'canvas');
+        if (!target) {
+          const canvases = Array.from(doc.querySelectorAll('canvas'));
+          const visible = canvases.filter(c => (c.offsetWidth > 0 && c.offsetHeight > 0));
+          target = (visible[0] || canvases[0] || doc.body);
+        }
+      }
+      if (!target) return false;
+
+      const rect = target.getBoundingClientRect();
+      const cx = Math.floor(rect.left + rect.width / 2);
+      const cy = Math.floor(rect.top + rect.height / 2);
+
+      const commonInit = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: cx,
+        clientY: cy,
+        screenX: cx,
+        screenY: cy,
+        view: win,
+      };
+
+      const view = (target && target.ownerDocument && target.ownerDocument.defaultView) || win;
+      const fire = (ev) => { try { target.dispatchEvent(ev); } catch (_) {} };
+
+      // Native click first
+      try { target.click(); } catch (_) {}
+
+      // Pointer events are widely supported and Phaser often listens to them
+      try {
+        const down = new view.PointerEvent('pointerdown', { ...commonInit, pointerType: 'mouse', isPrimary: true, pointerId: 1, buttons: 1, button: 0 });
+        fire(down);
+        const up = new view.PointerEvent('pointerup', { ...commonInit, pointerType: 'mouse', isPrimary: true, pointerId: 1, buttons: 0, button: 0 });
+        // Slight delay to mimic a tap
+        setTimeout(() => fire(up), 35);
+        // continue to mouse sequence below
+      } catch (_) {}
+
+      // Fallback: mouse events
+      try {
+        const mdown = new view.MouseEvent('mousedown', { ...commonInit, button: 0 });
+        fire(mdown);
+        const mup = new view.MouseEvent('mouseup', { ...commonInit, button: 0 });
+        setTimeout(() => fire(mup), 35);
+        // also fire click
+        setTimeout(() => fire(new view.MouseEvent('click', { ...commonInit, button: 0 })), 40);
+      } catch (_) {}
+      return true;
+    } catch (err) {
+      console.warn('Synthetic click error:', err);
+      return false;
+    }
+  }
+
+  // Search nested iframes starting from an outer iframe element for a selector; returns the first matching element or null
+  findInFrames(rootFrameEl, selector) {
+    const stack = [rootFrameEl];
+    while (stack.length) {
+      const frameEl = stack.pop();
+      try {
+        const win = frameEl && frameEl.contentWindow;
+        const doc = win && win.document;
+        if (!doc) continue;
+
+        // Try in this frame
+        const hit = doc.querySelector(selector);
+        if (hit) return hit;
+
+        // Enqueue children iframes
+        const children = doc.querySelectorAll('iframe');
+        for (const child of children) {
+          if (child && child.contentWindow) stack.push(child);
+        }
+      } catch (_) {
+        // Cross-origin: skip
+        continue;
+      }
+    }
+    return null;
+  }
+
   // ===== OSD helpers =====
   isOSDOpen() {
     const el = document.getElementById('osd');
@@ -736,7 +911,7 @@ class GamepadManager {
     }
     if (targets.length === 0) targets.push(document);
 
-    console.log(`Dispatching ${eventType} event:`, { key, keyCode: mapping.keyCode, targetCount: targets.length });
+    // console.log(`Dispatching ${eventType} event:`, { key, keyCode: mapping.keyCode, targetCount: targets.length });
 
     // Dispatch keydown/keyup sequence, plus a keypress for character keys
     for (const t of targets) {
@@ -841,7 +1016,7 @@ class GamepadManager {
             
             <div class="configurator-sidebar">
               <div class="mapping-info">
-                <h3>Button Mapping</h3>
+            <h3>Button Mapping</h3>
                 <div class="current-mapping" id="current-mapping-display">
                   <p>Click a button to configure it</p>
                 </div>
@@ -855,6 +1030,26 @@ class GamepadManager {
                     <input type="checkbox" id="wasd-toggle" />
                     <span class="slider"></span>
                   </label>
+                </div>
+              </div>
+
+              <div class="start-section" id="start-section">
+                <h3>Start Button</h3>
+                <div class="form-group inline">
+                  <label for="start-touch-toggle">Simulate click on Start:</label>
+                  <label class="switch">
+                    <input type="checkbox" id="start-touch-toggle" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="form-group">
+                  <label for="touch-target-input">Click target selector (optional):</label>
+                  <input type="text" id="touch-target-input" placeholder="#startButton or any CSS selector" />
+                </div>
+                <div class="form-group">
+                  <label for="scene-name-input">Phaser scene to start (optional):</label>
+                  <input type="text" id="scene-name-input" placeholder="game-scene" />
+                  <p class="testing-hint">If available, calls window.gameScene.scene.start(name) or globalThis.__PHASER_GAME__.scene.scenes[0].scene.start(name) on Start.</p>
                 </div>
               </div>
               
@@ -988,6 +1183,29 @@ class GamepadManager {
       wasdToggle.checked = !!this.useWASDForDpad;
       wasdToggle.addEventListener('change', () => {
         this.setUseWASDForDpad(!!wasdToggle.checked);
+      });
+    }
+
+    // Start button preferences
+    const startTouchToggle = configurator.querySelector('#start-touch-toggle');
+    const touchTargetInput = configurator.querySelector('#touch-target-input');
+    const sceneNameInput = configurator.querySelector('#scene-name-input');
+    if (startTouchToggle) {
+      startTouchToggle.checked = !!this.simulateTouchOnStart;
+      startTouchToggle.addEventListener('change', () => {
+        this.setSimulateTouchOnStart(!!startTouchToggle.checked);
+      });
+    }
+    if (touchTargetInput) {
+      touchTargetInput.value = this.touchTargetSelector || '';
+      touchTargetInput.addEventListener('change', () => {
+        this.setTouchTargetSelector(String(touchTargetInput.value || '').trim());
+      });
+    }
+    if (sceneNameInput) {
+      sceneNameInput.value = this.startSceneName || '';
+      sceneNameInput.addEventListener('change', () => {
+        this.setStartSceneName(String(sceneNameInput.value || '').trim());
       });
     }
 
@@ -1295,6 +1513,38 @@ class GamepadManager {
       return v === '1' || v === 'true';
     } catch (_) { return false; }
   }
+
+  // ===== Preferences (Start actions) =====
+  setSimulateTouchOnStart(enabled) {
+    this.simulateTouchOnStart = !!enabled;
+    try { localStorage.setItem('gamepadStartSimTouch', this.simulateTouchOnStart ? '1' : '0'); } catch (_) {}
+  }
+
+  setTouchTargetSelector(selector) {
+    this.touchTargetSelector = selector || '';
+    try { localStorage.setItem('gamepadTouchTargetSelector', this.touchTargetSelector); } catch (_) {}
+  }
+
+  setStartSceneName(name) {
+    this.startSceneName = name || '';
+    try { localStorage.setItem('gamepadStartSceneName', this.startSceneName); } catch (_) {}
+  }
+
+  loadStartTouchPreference() {
+    try {
+      const v = localStorage.getItem('gamepadStartSimTouch');
+      // Default ON when unset
+      return v === null ? true : (v === '1' || v === 'true');
+    } catch (_) { return true; }
+  }
+
+  loadTouchTargetPreference() {
+    try { return localStorage.getItem('gamepadTouchTargetSelector') || ''; } catch (_) { return ''; }
+  }
+
+  loadStartScenePreference() {
+    try { return localStorage.getItem('gamepadStartSceneName') || ''; } catch (_) { return ''; }
+  }
   
   saveMapping() {
     localStorage.setItem('gamepadMapping', JSON.stringify(this.currentMapping));
@@ -1601,6 +1851,11 @@ const configuratorCSS = `
   color: #bdc3c7;
   font-size: 12px;
   margin: 6px 0 0 0;
+}
+
+.start-section h3 {
+  color: #ecf0f1;
+  margin: 0 0 10px 0;
 }
 
 /* Toggle switch */

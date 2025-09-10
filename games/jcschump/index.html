@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bad Ass Space Shmup</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            background-color: #1a1a2e;
+            color: #ffffff;
+            overscroll-behavior: contain;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-container {
+            display: flex;
+            height: 100vh;
+            flex-direction: column-reverse;
+        }
+
+        @media (min-width: 768px) {
+            #game-container {
+                flex-direction: row;
+            }
+        }
+
+        #game-canvas {
+            flex-grow: 1;
+            background-color: #16213e;
+            position: relative;
+            overflow: hidden;
+            background-image: radial-gradient(#243b55 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        #game-ui {
+            width: 100%;
+            height: 120px;
+            background-color: #0f3460;
+            padding: 10px;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        @media (min-width: 768px) {
+            #game-ui {
+                width: 200px;
+                height: 100vh;
+                flex-direction: column;
+            }
+        }
+
+        .player {
+            width: 40px;
+            height: 50px;
+            position: absolute;
+            transition: transform 0.1s;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath d='M50 0L35 20l-10 70h50l-10-70L50 0z' fill='%23e1e1e1'/%3E%3Cpath d='M25 90v10h50V90H25z' fill='%23c4c4c4'/%3E%3Cpath d='M40 20h20L50 0 40 20z' fill='%23f4f4f4'/%3E%3Cpath d='M35 40h30l5-20H30l5 20z' fill='%23d4d4d4'/%3E%3Cpath d='M45 25h10v25H45z' fill='%23b4b4b4'/%3E%3Ccircle cx='50' cy='35' r='3' fill='%23e94560'/%3E%3C/svg%3E");
+        }
+
+        .bullet {
+            width: 6px;
+            height: 12px;
+            background-color: #e94560;
+            position: absolute;
+            border-radius: 3px;
+            transform-origin: center;
+        }
+
+        .enemy {
+            width: 30px;
+            height: 30px;
+            background-color: #4CAF50;
+            position: absolute;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        }
+
+        .power-up {
+            width: 20px;
+            height: 20px;
+            background-color: #FFD700;
+            position: absolute;
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%,
+                    79% 91%, 50% 70%, 21% 91%, 32% 57%,
+                    2% 35%, 39% 35%);
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+
+        .error-boundary {
+            padding: 20px;
+            text-align: center;
+            background-color: #e94560;
+            color: white;
+        }
+
+        .score-display {
+            font-size: 1.2em;
+            text-align: center;
+        }
+
+        @media (max-width: 767px) {
+            .score-display {
+                font-size: 1em;
+            }
+        }
+
+        .ufo {
+            width: 60px;
+            height: 30px;
+            position: absolute;
+            background-color: #FFD700;
+            border-radius: 30px 30px 5px 5px;
+            box-shadow: 0 0 20px #FFD700;
+            transition: opacity 0.1s;
+        }
+
+        .ufo::before {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 20px;
+            background-color: #FF4081;
+            border-radius: 20px 20px 0 0;
+            top: -10px;
+            left: 10px;
+        }
+
+        .shooter-enemy {
+            width: 30px;
+            height: 30px;
+            background-color: #FF4081;
+            position: absolute;
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+            transform: rotate(180deg);
+        }
+
+        .enemy-bullet {
+            width: 8px;
+            height: 8px;
+            background-color: #FF4081;
+            position: absolute;
+            border-radius: 50%;
+            box-shadow: 0 0 5px #FF4081;
+        }
+
+        .enemy-bullet.flashing {
+            animation: flash 0.2s infinite;
+        }
+
+        @keyframes flash {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .companion-powerup {
+            background-color: #4169E1 !important;
+            box-shadow: 0 0 10px #4169E1;
+        }
+
+        .companion-ship {
+            position: absolute;
+            width: 40px;
+            height: 50px;
+            z-index: 10;
+            /* Ensure it appears above other elements */
+        }
+
+
+        .giant-powerup {
+            background-color: #FF1493 !important;
+            box-shadow: 0 0 10px #FF1493;
+        }
+
+        .space-invader {
+            width: 40px;
+            height: 40px;
+            position: absolute;
+            background-color: #4CAF50;
+            clip-path: polygon(0% 25%, 40% 25%, 40% 0%, 60% 0%,
+                    60% 25%, 100% 25%, 100% 60%,
+                    60% 60%, 60% 100%, 40% 100%,
+                    40% 60%, 0% 60%);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="game-container">
+        <div id="game-canvas"></div>
+        <div id="game-ui">
+            <div class="score-display">
+                <div id="score">Score: 0</div>
+                <div id="level">Level: 1</div>
+                <div id="lives">Lives: 3</div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="game.js"></script>
+</body>
+
+</html>
