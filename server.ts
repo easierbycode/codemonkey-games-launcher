@@ -246,6 +246,19 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     await saveZipToDir(zipBytes, target, subdir || "root");
     return json({ ok: true, id });
   }
+  if (url.pathname === "/api/add-game/from-url" && req.method === "POST") {
+    const { url: gameUrl, subdir, name } = await req.json();
+    if (!gameUrl) return new Response("url required", { status: 400 });
+    const resp = await fetch(gameUrl);
+    if (!resp.ok) return new Response("download failed", { status: 502 });
+    const zipBytes = new Uint8Array(await resp.arrayBuffer());
+    const gameName = name || new URL(gameUrl).pathname.split('/').pop()?.replace(/\.zip$/, '') || 'game';
+    const id = gameName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const target = join(GAMES_DIR, id);
+    await ensureDir(target);
+    await saveZipToDir(zipBytes, target, subdir || "root");
+    return json({ ok: true, id });
+  }
   if (url.pathname.startsWith("/api/games/") && url.pathname.endsWith("/thumbnail") && req.method === "POST") {
     const id = url.pathname.split("/")[3];
     const target = join(GAMES_DIR, id);
