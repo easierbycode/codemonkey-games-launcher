@@ -10,6 +10,7 @@ const gameframe = document.getElementById('gameframe');
 const zipInput = document.getElementById('zip-input');
 const addZipBtn = document.getElementById('add-zip');
 const addGithubBtn = document.getElementById('add-github');
+const addUrlBtn = document.getElementById('add-url');
 const osd = document.getElementById('osd');
 const osdClose = document.getElementById('osd-close');
 const captureThumbBtn = document.getElementById('capture-thumb');
@@ -322,6 +323,29 @@ addGithubBtn.addEventListener('click', async () => {
     const idx = games.findIndex((g) => g.id === data.id);
     focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
     const gameName = name || repo.split('/').pop() || 'game';
+    alert(`Game "${gameName}" added successfully! Click on it to launch.`);
+  } else {
+    alert('Download failed');
+  }
+});
+
+// Add Game (URL)
+addUrlBtn.addEventListener('click', async () => {
+  const url = prompt('Game ZIP URL:');
+  if (!url) return;
+  const name = prompt('Game name (optional):', '') || undefined;
+  const subdir = prompt('Game location: root, dist, or docs?', 'root') || 'root';
+  const res = await fetch('/api/add-game/from-url', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url, subdir, name }),
+  });
+  if (res.ok) {
+    const data = await res.json();
+    await fetchGames();
+    const idx = games.findIndex((g) => g.id === data.id);
+    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
+    const gameName = name || url.split('/').pop()?.replace(/\.zip$/, '') || 'game';
     alert(`Game "${gameName}" added successfully! Click on it to launch.`);
   } else {
     alert('Download failed');
