@@ -286,6 +286,14 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     await Deno.remove(target, { recursive: true });
     return json({ ok: true });
   }
+  if (url.pathname === "/api/heartbeat" && req.method === "POST") {
+    // This is the heartbeat endpoint, part of the mechanism to ensure the app closes
+    // when the browser window is closed.
+    if (globalThis.lastHeartbeat) {
+      globalThis.lastHeartbeat = Date.now();
+    }
+    return json({ ok: true });
+  }
   return undefined;
 }
 
@@ -1026,6 +1034,22 @@ Deno.serve({ port: PORT }, handler);
 
 // Auto-launch kiosk browser when running the compiled binary on supported OSes
 if (isCompiled() && (Deno.build.os === "windows" || Deno.build.os === "darwin") && (Deno.env.get("CMG_AUTO_KIOSK") ?? "1") !== "0") {
+  // In compiled mode, we use a heartbeat to detect when the browser window closes
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).lastHeartbeat = Date.now();
+  const HEARTBEAT_CHECK_INTERVAL = 5000; // 5 seconds
+  const HEARTBEAT_TIMEOUT = 10000; // 10 seconds
+
+  const monitor = setInterval(() => {
+    // deno-lint-ignore no-explicit-any
+    const last = (globalThis as any).lastHeartbeat;
+    if (Date.now() - last > HEARTBEAT_TIMEOUT) {
+      console.log("Heartbeat timeout exceeded. App window likely closed. Exiting.");
+      clearInterval(monitor);
+      Deno.exit(0);
+    }
+  }, HEARTBEAT_CHECK_INTERVAL);
+
   // Small delay to ensure server is ready
   (async () => {
     try { await new Promise((r) => setTimeout(r, 300)); } catch {}
