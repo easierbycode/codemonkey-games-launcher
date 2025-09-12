@@ -289,8 +289,10 @@ async function handleApi(req: Request): Promise<Response | undefined> {
   if (url.pathname === "/api/heartbeat" && req.method === "POST") {
     // This is the heartbeat endpoint, part of the mechanism to ensure the app closes
     // when the browser window is closed.
-    if (globalThis.lastHeartbeat) {
-      globalThis.lastHeartbeat = Date.now();
+    // deno-lint-ignore no-explicit-any
+    if ((globalThis as any).lastHeartbeat) {
+      // deno-lint-ignore no-explicit-any
+      (globalThis as any).lastHeartbeat = Date.now();
     }
     return json({ ok: true });
   }
