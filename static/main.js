@@ -475,3 +475,27 @@ window.addEventListener('message', (ev) => {
     if (msg.action === 'exit') exitGame();
   }
 });
+
+// Heartbeat to keep the parent process alive.
+// When the browser window is closed, this will stop, and the Deno server
+// will exit after a timeout. This is only active in the compiled app.
+(function startHeartbeat() {
+  // Check for a marker injected by the server to know if we are in the launcher app
+  const isLauncher = window.__CMG_LAUNCHER__ || (window.__CMG__ && window.__CMG__.launcher);
+  if (!isLauncher && !location.port) {
+    // A simple heuristic: if not explicitly marked as launcher and not on a dev port,
+    // assume we are not in the app environment where a heartbeat is needed.
+    return;
+  }
+
+  const interval = 3000; // 3 seconds
+  setInterval(async () => {
+    // Pause when page is not visible to avoid unnecessary background work
+    if (document.hidden) return;
+    try {
+      await fetch('/api/heartbeat', { method: 'POST', body: '{}' });
+    } catch (e) {
+      console.warn('Heartbeat failed.', e);
+    }
+  }, interval);
+})();
