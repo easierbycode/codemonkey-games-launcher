@@ -361,7 +361,8 @@ async function launchKiosk(url: string): Promise<void> {
 
   if (Deno.build.os === "darwin") {
     // Prefer using the app bundle via `open -a` for robustness
-    const openArgs: string[] = ["-a", "Google Chrome", "--args", `--app=${url}`, "--kiosk", "--start-fullscreen", "--no-first-run", "--no-default-browser-check", "--disable-translate"];
+    // The -n flag is crucial to open a new instance if Chrome is already running
+    const openArgs: string[] = ["-n", "-a", "Google Chrome", "--args", `--app=${url}`, "--kiosk", "--start-fullscreen", "--no-first-run", "--no-default-browser-check", "--disable-translate"];
     if (userDataDir) openArgs.push(`--user-data-dir=${userDataDir}`);
     if (disableExt) {
       openArgs.push("--disable-extensions", "--disable-component-extensions-with-background-pages", "--guest");

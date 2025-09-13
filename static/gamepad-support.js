@@ -23,6 +23,7 @@ class GamepadManager {
 
     // Detect Gamepad Button state
     this._detecting = false; // { ui: { selectEl, buttonEl, hintEl } } | false
+    this.activeConfigControllerIndex = 'all';
     this._detectSnapshot = {}; // controllerIndex -> [bool]
     
     // Default controller mapping (Standard Gamepad API)
@@ -53,9 +54,18 @@ class GamepadManager {
         home: { gamepadButton: 16, keyboardKey: 'h', keyCode: 72 }
       }
     };
+
+    // Create a WASD mapping variant by deep copying the default and overriding the dpad
+    this.wasdMapping = JSON.parse(JSON.stringify(this.defaultMapping));
+    this.wasdMapping.dpad = {
+      up: { gamepadButton: 12, keyboardKey: 'w', keyCode: 87 },
+      down: { gamepadButton: 13, keyboardKey: 's', keyCode: 83 },
+      left: { gamepadButton: 14, keyboardKey: 'a', keyCode: 65 },
+      right: { gamepadButton: 15, keyboardKey: 'd', keyCode: 68 }
+    };
     
-    // Load saved mapping or use default
-    this.currentMapping = this.loadMapping();
+    // Mappings are now loaded per-controller in addGamepad.
+    // The `currentMapping` property is now deprecated and will be removed.
     
     this.init();
   }
@@ -116,17 +126,19 @@ class GamepadManager {
   onGamepadConnected(event) {
     console.log('Gamepad connected:', event.gamepad);
     this.addGamepad(event.gamepad);
-    this.refreshTestingControllerOptionsIfOpen();
+    this.refreshConfigControllerOptionsIfOpen();
   }
   
   onGamepadDisconnected(event) {
     console.log('Gamepad disconnected:', event.gamepad);
     this.removeGamepad(event.gamepad);
-    this.refreshTestingControllerOptionsIfOpen();
+    this.refreshConfigControllerOptionsIfOpen();
   }
   
   addGamepad(gamepad) {
     this.controllers[gamepad.index] = gamepad;
+    // Load the mapping specific to this controller
+    this.controllers[gamepad.index].mapping = this.loadMapping(gamepad.index);
     
     // Initialize button state for all expected buttons
     this.buttonState[gamepad.index] = {
@@ -207,7 +219,9 @@ class GamepadManager {
   }
   
   processButtonGroup(groupName, controller, controllerIndex, prevButtonState) {
-    const group = this.currentMapping[groupName];
+    const mapping = this.controllers[controllerIndex]?.mapping;
+    if (!mapping) return;
+    const group = mapping[groupName];
     if (!group) return;
 
     for (let buttonName in group) {
@@ -331,8 +345,11 @@ class GamepadManager {
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return; // Skip while overlays are open
     if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
 
+    const mapping = this.controllers[controllerIndex]?.mapping;
+    if (!mapping) return;
+
     // D-pad navigation
-    const dpadMapping = this.currentMapping.dpad;
+    const dpadMapping = mapping.dpad;
     if (controller.buttons[dpadMapping.left.gamepadButton]?.pressed &&
         !prevButtonState.dpadLeft) {
       console.log('D-pad LEFT pressed (button', dpadMapping.left.gamepadButton, ')');
@@ -352,7 +369,7 @@ class GamepadManager {
     }
 
     // Face button actions
-    const faceMapping = this.currentMapping.face;
+    const faceMapping = mapping.face;
     if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed &&
         !prevButtonState.faceSouth) {
       console.log('Face btnBottom (A) pressed (button', faceMapping.btnBottom.gamepadButton, ')');
@@ -363,7 +380,7 @@ class GamepadManager {
     }
 
     // Start button - show game menu
-    const specialMapping = this.currentMapping.special;
+    const specialMapping = mapping.special;
     if (controller.buttons[specialMapping.start.gamepadButton]?.pressed &&
         !prevButtonState.startPressed) {
       console.log('Start button pressed (button', specialMapping.start.gamepadButton, ')');
@@ -376,8 +393,10 @@ class GamepadManager {
   
   processOSDControls(controller, controllerIndex, prevButtonState) {
     if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
-    const selectPressed = controller.buttons[this.currentMapping.special.select.gamepadButton]?.pressed;
-    const downPressed = controller.buttons[this.currentMapping.dpad.down.gamepadButton]?.pressed;
+    const mapping = this.controllers[controllerIndex]?.mapping;
+    if (!mapping) return;
+    const selectPressed = controller.buttons[mapping.special.select.gamepadButton]?.pressed;
+    const downPressed = controller.buttons[mapping.dpad.down.gamepadButton]?.pressed;
 
     // Open OSD: Select + DPad Down
     if (!this.isOSDOpen()) {
@@ -395,8 +414,8 @@ class GamepadManager {
     }
 
     // When OSD is open: navigate and act
-    const dpadMapping = this.currentMapping.dpad;
-    const faceMapping = this.currentMapping.face;
+    const dpadMapping = mapping.dpad;
+    const faceMapping = mapping.face;
 
     // Navigation: Up/Down
     if (controller.buttons[dpadMapping.up.gamepadButton]?.pressed && !prevButtonState.dpadUp) {
@@ -434,9 +453,11 @@ class GamepadManager {
     if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     if (!this.isGameMenuOpen()) return;
 
-    const dpadMapping = this.currentMapping.dpad;
-    const faceMapping = this.currentMapping.face;
-    const specialMapping = this.currentMapping.special;
+    const mapping = this.controllers[controllerIndex]?.mapping;
+    if (!mapping) return;
+    const dpadMapping = mapping.dpad;
+    const faceMapping = mapping.face;
+    const specialMapping = mapping.special;
 
     // Navigation: Up/Down
     if (controller.buttons[dpadMapping.up.gamepadButton]?.pressed && !prevButtonState.gmDpadUp) {
@@ -815,6 +836,22 @@ class GamepadManager {
             </div>
             
             <div class="configurator-sidebar">
+              <div class="form-group">
+                <label for="config-controller-select" style="font-weight: bold; font-size: 16px;">Configure Controller</label>
+                <select id="config-controller-select">
+                  <option value="all">All Connected</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="mapping-style-select">Mapping Style</label>
+                <select id="mapping-style-select">
+                  <option value="arrows">Arrows (Default)</option>
+                  <option value="wasd">WASD</option>
+                </select>
+              </div>
+              <hr style="border-color: #34495e; margin: 0 0 15px 0;">
+
               <div class="mapping-info">
                 <h3>Button Mapping</h3>
                 <div class="current-mapping" id="current-mapping-display">
@@ -867,12 +904,6 @@ class GamepadManager {
                     <input type="checkbox" id="btn-testing-toggle" />
                     <span class="slider"></span>
                   </label>
-                </div>
-                <div class="form-group inline">
-                  <label for="testing-controller-select">Controller:</label>
-                  <select id="testing-controller-select">
-                    <option value="all">All Connected</option>
-                  </select>
                 </div>
                 <p class="testing-hint">When enabled, pressed controls light up on the diagram. Choose a controller to test or leave as All.</p>
               </div>
@@ -946,25 +977,93 @@ class GamepadManager {
       });
     }
 
-    // Populate controller select for testing
-    this.updateTestingControllerDropdown();
-    const testingControllerSelect = configurator.querySelector('#testing-controller-select');
-    if (testingControllerSelect) {
-      testingControllerSelect.value = String(this.testingController);
-      testingControllerSelect.addEventListener('change', () => {
-        const val = testingControllerSelect.value;
-        this.testingController = val === 'all' ? 'all' : String(parseInt(val, 10));
-        // Refresh visuals immediately to reflect filter
-        try { this.updateTestingVisual(); } catch (_) {}
+    // Populate and handle main controller selector
+    this.updateConfigControllerDropdown();
+    const configControllerSelect = configurator.querySelector('#config-controller-select');
+    if (configControllerSelect) {
+      configControllerSelect.value = String(this.activeConfigControllerIndex || 'all');
+      configControllerSelect.addEventListener('change', () => {
+        this.updateSelectedControllerForConfig(configControllerSelect.value);
       });
     }
+
+    // Handle mapping style selector
+    const mappingStyleSelect = configurator.querySelector('#mapping-style-select');
+    if (mappingStyleSelect) {
+      mappingStyleSelect.addEventListener('change', () => {
+        this.setMappingStyle(mappingStyleSelect.value);
+      });
+    }
+
+    // Initial UI update for selected controller
+    this.updateSelectedControllerForConfig(this.activeConfigControllerIndex || 'all');
   }
   
+  updateSelectedControllerForConfig(index) {
+    this.activeConfigControllerIndex = index;
+    // Also use this as the testing controller
+    this.testingController = index;
+
+    const mappingStyleSelect = document.querySelector('#mapping-style-select');
+    const mappingForm = document.querySelector('#mapping-form');
+    const mappingDisplay = document.querySelector('#current-mapping-display');
+
+    if (index === 'all') {
+      // Disable mapping style and button config when 'all' is selected
+      if (mappingStyleSelect) mappingStyleSelect.disabled = true;
+      if (mappingForm) mappingForm.style.display = 'none';
+      if (mappingDisplay) mappingDisplay.style.display = 'block';
+      this.configSelection = null; // Clear any active button selection
+      return;
+    }
+
+    if (mappingStyleSelect) mappingStyleSelect.disabled = false;
+
+    const controller = this.controllers[index];
+    if (!controller || !controller.mapping) return;
+
+    // Check if the current mapping for this controller resembles the WASD layout
+    const isWasd = controller.mapping.dpad.up.keyboardKey === 'w';
+    if (mappingStyleSelect) {
+      mappingStyleSelect.value = isWasd ? 'wasd' : 'arrows';
+    }
+  }
+
+  setMappingStyle(style) {
+    const controllerIndex = this.activeConfigControllerIndex;
+    if (controllerIndex === 'all' || !this.controllers[controllerIndex]) {
+      alert('Please select a specific controller to change the mapping style.');
+      return;
+    }
+
+    let newMapping;
+    if (style === 'wasd') {
+      newMapping = JSON.parse(JSON.stringify(this.wasdMapping));
+    } else {
+      newMapping = JSON.parse(JSON.stringify(this.defaultMapping));
+    }
+
+    this.controllers[controllerIndex].mapping = newMapping;
+    this.saveMapping(controllerIndex, newMapping);
+    alert(`Mapping style for Controller ${controllerIndex} set to ${style.toUpperCase()}.`);
+
+    // If a button was selected for config, refresh its displayed values
+    if (this.configSelection) {
+      this.selectButtonForConfig(this.configSelection.group, this.configSelection.button, document.querySelector('.config-btn.selected'));
+    }
+  }
+
   selectButtonForConfig(group, button, element) {
+    const controllerIndex = this.activeConfigControllerIndex;
+    if (controllerIndex === 'all') {
+      alert('Please select a specific controller to configure its buttons.');
+      return;
+    }
+
     // Highlight selected button
     const allButtons = document.querySelectorAll('.config-btn');
     allButtons.forEach(btn => btn.classList.remove('selected'));
-    element.classList.add('selected');
+    if (element) element.classList.add('selected');
     
     // Show mapping form
     const mappingForm = document.querySelector('#mapping-form');
@@ -975,8 +1074,10 @@ class GamepadManager {
     mappingForm.style.display = 'block';
     buttonNameSpan.textContent = `${group.toUpperCase()} ${button.toUpperCase()}`;
     
-    // Populate current values
-    const currentMapping = this.currentMapping[group][button];
+    // Populate current values from the active controller's mapping
+    const controller = this.controllers[controllerIndex];
+    if (!controller || !controller.mapping) return;
+    const currentMapping = controller.mapping[group][button];
     document.querySelector('#keyboard-key-input').value = currentMapping.keyboardKey;
     document.querySelector('#gamepad-button-select').value = currentMapping.gamepadButton;
     
@@ -991,56 +1092,75 @@ class GamepadManager {
     const handler = (e) => {
       e.preventDefault();
       input.value = e.key;
-      document.removeEventListener('keydown', handler);
+      document.removeEventListener('keydown', handler, true);
     };
     
-    document.addEventListener('keydown', handler);
+    document.addEventListener('keydown', handler, true);
   }
   
   saveCurrentMapping() {
+    const controllerIndex = this.activeConfigControllerIndex;
+    if (controllerIndex === 'all' || !this.controllers[controllerIndex]) {
+      alert('Please select a controller to save its mapping.');
+      return;
+    }
     if (!this.configSelection) return;
+
+    const mapping = this.controllers[controllerIndex].mapping;
     
     const { group, button } = this.configSelection;
     const keyboardKey = document.querySelector('#keyboard-key-input').value;
     const gamepadButton = parseInt(document.querySelector('#gamepad-button-select').value);
     
     // Update mapping
-    this.currentMapping[group][button].keyboardKey = keyboardKey;
-    this.currentMapping[group][button].keyCode = this.getKeyCode(keyboardKey);
-    this.currentMapping[group][button].gamepadButton = gamepadButton;
+    mapping[group][button].keyboardKey = keyboardKey;
+    mapping[group][button].keyCode = this.getKeyCode(keyboardKey);
+    mapping[group][button].gamepadButton = gamepadButton;
     
     // Save to localStorage
-    this.saveMapping();
+    this.saveMapping(controllerIndex, mapping);
     
-    alert('Mapping saved!');
+    alert(`Mapping saved for Controller ${controllerIndex}!`);
   }
   
   resetCurrentMapping() {
+    const controllerIndex = this.activeConfigControllerIndex;
+    if (controllerIndex === 'all' || !this.controllers[controllerIndex]) {
+      alert('Please select a controller to reset its mapping.');
+      return;
+    }
     if (!this.configSelection) return;
+
+    const mapping = this.controllers[controllerIndex].mapping;
     
     const { group, button } = this.configSelection;
     const defaultMapping = this.defaultMapping[group][button];
     
     // Reset to default
-    this.currentMapping[group][button] = { ...defaultMapping };
+    mapping[group][button] = { ...defaultMapping };
     
     // Update UI
     document.querySelector('#keyboard-key-input').value = defaultMapping.keyboardKey;
     document.querySelector('#gamepad-button-select').value = defaultMapping.gamepadButton;
     
-    this.saveMapping();
+    this.saveMapping(controllerIndex, mapping);
   }
   
   resetAllMappings() {
-    if (confirm('Reset all controller mappings to default?')) {
-      this.currentMapping = JSON.parse(JSON.stringify(this.defaultMapping));
-      this.saveMapping();
-      this.closeConfigurator();
+    if (confirm('Reset all controller mappings to default for all connected controllers?')) {
+      for (const controllerIndex in this.controllers) {
+        const defaultMappingCopy = JSON.parse(JSON.stringify(this.defaultMapping));
+        this.controllers[controllerIndex].mapping = defaultMappingCopy;
+        this.saveMapping(controllerIndex, defaultMappingCopy);
+      }
+      // Refresh the UI for the currently selected controller
+      this.updateSelectedControllerForConfig(this.activeConfigControllerIndex);
+      alert('All controller mappings have been reset to default.');
     }
   }
   
   saveAndClose() {
-    this.saveMapping();
+    // No need to save all, just close. Changes are saved as they are made.
     this.closeConfigurator();
   }
   
@@ -1064,8 +1184,8 @@ class GamepadManager {
     if (!this.testingMode) this.clearTestingVisual();
   }
 
-  updateTestingControllerDropdown() {
-    const select = document.querySelector('.controller-configurator #testing-controller-select');
+  updateConfigControllerDropdown() {
+    const select = document.querySelector('.controller-configurator #config-controller-select');
     if (!select) return;
     const prev = String(this.testingController);
     // Clear options
@@ -1091,9 +1211,9 @@ class GamepadManager {
     select.value = next;
   }
 
-  refreshTestingControllerOptionsIfOpen() {
+  refreshConfigControllerOptionsIfOpen() {
     if (this.isConfiguratorOpen && this.isConfiguratorOpen()) {
-      this.updateTestingControllerDropdown();
+      this.updateConfigControllerDropdown();
     }
   }
 
@@ -1238,12 +1358,18 @@ class GamepadManager {
     return keyCodeMap[key] || key.charCodeAt(0);
   }
   
-  saveMapping() {
-    localStorage.setItem('gamepadMapping', JSON.stringify(this.currentMapping));
+  saveMapping(controllerIndex, mapping) {
+    if (typeof controllerIndex === 'undefined' || !mapping) return;
+    localStorage.setItem(`gamepadMapping-${controllerIndex}`, JSON.stringify(mapping));
   }
   
-  loadMapping() {
-    const saved = localStorage.getItem('gamepadMapping');
+  loadMapping(controllerIndex) {
+    if (typeof controllerIndex === 'undefined') {
+      // This case should ideally not be used anymore, but as a fallback, return default.
+      return JSON.parse(JSON.stringify(this.defaultMapping));
+    }
+    const saved = localStorage.getItem(`gamepadMapping-${controllerIndex}`);
+    // If no specific mapping is found, start with the default mapping.
     let mapping = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(this.defaultMapping));
     // Migrate old face button keys (north/east/south/west) to new names
     try {
