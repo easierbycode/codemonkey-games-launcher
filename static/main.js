@@ -99,6 +99,21 @@ function renderCoverflow() {
 
 function updateCardTransforms() {
   const cards = Array.from(document.querySelectorAll('.card'));
+  const track = document.querySelector('.coverflow-track');
+
+  if (!track || !cards.length) return;
+
+  // Get the first card to calculate dimensions.
+  const card = cards[0];
+  const cardStyle = window.getComputedStyle(card);
+  const cardWidth = card.offsetWidth;
+  const cardMargin = parseInt(cardStyle.marginLeft, 10) + parseInt(cardStyle.marginRight, 10);
+  const totalCardWidth = cardWidth + cardMargin;
+
+  const coverflowWidth = coverflowEl.offsetWidth;
+  const offset = (coverflowWidth / 2) - (focusedIndex * totalCardWidth) - (cardWidth / 2);
+  track.style.transform = `translateX(${offset}px)`;
+
   cards.forEach((c, i) => {
     c.classList.remove('left', 'right', 'focus', 'dim');
     if (i === focusedIndex) {
@@ -179,6 +194,9 @@ const globalKeyHandler = (e) => {
 
 window.addEventListener('keydown', globalKeyHandler, { capture: true });
 document.addEventListener('keydown', globalKeyHandler, { capture: true });
+
+// Recenter on resize
+window.addEventListener('resize', updateCardTransforms);
 
 // Gamepad handling is now done by gamepad-support.js
 
