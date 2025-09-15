@@ -32,8 +32,9 @@ if (Deno.args.length > 0 && Deno.args[0].startsWith("codemonkey://")) {
 
       if (!serverIsUp) {
         console.log("Server not detected. Launching in background...");
+        const args = isCompiled() ? [] : ["run", "-A", "server.ts"];
         new Deno.Command(Deno.execPath(), {
-          args: ["run", "-A", "server.ts"],
+          args,
         }).spawn();
         serverIsUp = await waitForServer(5, 1000); // Wait longer after launch
       }
