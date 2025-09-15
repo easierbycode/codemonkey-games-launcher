@@ -88,7 +88,7 @@ function renderCoverflow() {
     const card = el('div', 'card dim');
     card.dataset.index = String(i);
     const title = el('div', 'label', g.name);
-    const bg = g.hasThumbnail ? `${g.urlPath}thumbnail.png` : placeholderCard(g.name);
+    const bg = g.hasThumbnail ? `${g.urlPath}thumbnail.png?v=${new Date().getTime()}` : placeholderCard(g.name);
     card.style.backgroundImage = `url(${bg})`;
     card.appendChild(title);
     card.addEventListener('click', () => focusIndex(i, true));
