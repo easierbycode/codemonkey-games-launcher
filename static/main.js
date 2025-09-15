@@ -256,7 +256,7 @@ captureThumbBtn.addEventListener('click', async () => {
   if (!game) return;
   try {
     const dataUrl = await captureIframeCanvas(gameframe);
-    if (!dataUrl) throw new Error('No canvas found');
+    if (!dataUrl) throw new Error('No content found to capture');
     const blob = await (await fetch(dataUrl)).blob();
     const buf = await blob.arrayBuffer();
     const res = await fetch(`/api/games/${game.id}/thumbnail`, { method: 'POST', body: buf });
@@ -268,35 +268,60 @@ captureThumbBtn.addEventListener('click', async () => {
     }
   } catch (err) {
     console.error(err);
-    alert('Could not capture thumbnail; ensure the game uses a <canvas> element.');
+    alert('Could not capture thumbnail.');
   }
 });
 
 async function captureIframeCanvas(iframe) {
   const doc = iframe.contentDocument;
   if (!doc) return null;
+
   const canvases = Array.from(doc.querySelectorAll('canvas'));
-  if (!canvases.length) return null;
   // Prefer visible canvases, then pick the one with the largest pixel area
   const visible = canvases.filter(c => (c.offsetWidth > 0 && c.offsetHeight > 0));
   const pickFrom = visible.length ? visible : canvases;
   const target = pickFrom.sort((a, b) => (a.width * a.height) - (b.width * b.height)).pop();
-  if (!target) return null;
-  const w = target.width || target.offsetWidth;
-  const h = target.height || target.offsetHeight;
-  if (!w || !h) return null;
-  // Copy to an offscreen 2D canvas to normalize output and avoid directly reading WebGL buffer
-  const off = document.createElement('canvas');
-  off.width = w; off.height = h;
-  const ctx = off.getContext('2d');
-  if (!ctx) return null;
-  try {
-    ctx.drawImage(target, 0, 0, w, h);
-    return off.toDataURL('image/png');
-  } catch (e) {
-    // Fallback: try direct toDataURL on the target
-    try { return target.toDataURL('image/png'); } catch { return null; }
+
+  if (target) {
+    const w = target.width || target.offsetWidth;
+    const h = target.height || target.offsetHeight;
+    if (!w || !h) return null;
+    // Copy to an offscreen 2D canvas to normalize output and avoid directly reading WebGL buffer
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    const ctx = off.getContext('2d');
+    if (!ctx) return null;
+    try {
+      ctx.drawImage(target, 0, 0, w, h);
+      return off.toDataURL('image/png');
+    } catch (e) {
+      // Fallback: try direct toDataURL on the target
+      try { return target.toDataURL('image/png'); } catch { /* continue to html2canvas */ }
+    }
   }
+
+  // Fallback for non-canvas games: use html2canvas
+  if (typeof html2canvas === 'function') {
+    try {
+      const canvas = await html2canvas(doc.body, {
+        allowTaint: true,
+        useCORS: true,
+        // Match iframe dimensions, otherwise it captures the whole page
+        width: iframe.clientWidth,
+        height: iframe.clientHeight,
+        x: 0,
+        y: 0,
+        scrollX: -doc.documentElement.scrollLeft,
+        scrollY: -doc.documentElement.scrollTop,
+      });
+      return canvas.toDataURL('image/png');
+    } catch (e) {
+      console.error('html2canvas failed:', e);
+      return null;
+    }
+  }
+
+  return null;
 }
 
 // Add Game (ZIP)
