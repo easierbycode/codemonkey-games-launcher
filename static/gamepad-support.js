@@ -221,7 +221,7 @@ class GamepadManager {
       this.processButtonGroup('special', controller, controllerIndex, prevButtonState, mapping, useWASD);
       
       // Process analog sticks
-      this.processAnalogSticks(controller, controllerIndex);
+      this.processAnalogSticks(controller, controllerIndex, mapping);
       
       // Handle launcher-specific controls
       this.processLauncherControls(controller, controllerIndex, prevButtonState, mapping);
@@ -318,7 +318,7 @@ class GamepadManager {
     return mapping;
   }
   
-  processAnalogSticks(controller, controllerIndex) {
+  processAnalogSticks(controller, controllerIndex, mapping) {
     // Check if axes exist (some controllers might not have them)
     if (!controller.axes || controller.axes.length < 4) return;
     
@@ -337,15 +337,15 @@ class GamepadManager {
     this.analogState[controllerIndex] = { leftStick, rightStick };
     
     // Convert analog to digital for launcher navigation
-    this.processAnalogToDigital(leftStick, controllerIndex, 'leftStick');
-    this.processAnalogToDigital(rightStick, controllerIndex, 'rightStick');
+    this.processAnalogToDigital(leftStick, controllerIndex, 'leftStick', controller, mapping);
+    this.processAnalogToDigital(rightStick, controllerIndex, 'rightStick', controller, mapping);
   }
   
   applyDeadzone(value, deadzone = 0.15) {
     return Math.abs(value) > deadzone ? value : 0;
   }
   
-  processAnalogToDigital(stick, controllerIndex, stickName) {
+  processAnalogToDigital(stick, controllerIndex, stickName, controller, mapping) {
     const threshold = 0.5;
     if (this.shouldSwallowFor(controllerIndex)) {
       // Do not route navigation while testing
@@ -357,6 +357,23 @@ class GamepadManager {
       return;
     }
     const prevState = this.buttonState[controllerIndex][stickName] || {};
+
+    // When not in-game, suppress analog navigation if D-pad is active to avoid duplicates
+    if (!document.body.classList.contains('playing') && controller && mapping && mapping.dpad) {
+      try {
+        const dm = mapping.dpad;
+        const dpadAny = !!(
+          controller.buttons[dm.left?.gamepadButton]?.pressed ||
+          controller.buttons[dm.right?.gamepadButton]?.pressed ||
+          controller.buttons[dm.up?.gamepadButton]?.pressed ||
+          controller.buttons[dm.down?.gamepadButton]?.pressed
+        );
+        if (dpadAny) {
+          this.buttonState[controllerIndex][stickName] = { left: false, right: false, up: false, down: false };
+          return;
+        }
+      } catch (_) { /* ignore */ }
+    }
 
     // Horizontal movement
     const leftPressed = stick.x < -threshold;
@@ -819,6 +836,38 @@ class GamepadManager {
     return !!(this.isTestingActive && this.isTestingActive());
   }
 
+  // ===== Per-game key routing preference =====
+  // Active game id derived from iframe path /games/<id>/...
+  getActiveGameId() {
+    try {
+      const iframe = document.querySelector('iframe#gameframe');
+      if (!iframe) return null;
+      let path = '';
+      try { path = iframe.contentWindow?.location?.pathname || ''; } catch(_) {}
+      if (!path) {
+        try { path = new URL(iframe.src, location.origin).pathname; } catch(_) {}
+      }
+      if (!path) return null;
+      const segs = (path.startsWith('/') ? path.slice(1) : path).split('/');
+      if (segs[0] !== 'games') return null;
+      return segs[1] || null;
+    } catch(_) { return null; }
+  }
+
+  getKeydownOnlyForGame(gameId) {
+    try { return localStorage.getItem(`cmg_keydownOnly_${gameId}`) === '1'; } catch(_) { return false; }
+  }
+
+  setKeydownOnlyForGame(gameId, enabled) {
+    try { localStorage.setItem(`cmg_keydownOnly_${gameId}`, enabled ? '1' : '0'); } catch(_) {}
+  }
+
+  isKeydownOnlyMode() {
+    const id = this.getActiveGameId();
+    if (!id) return false;
+    return this.getKeydownOnlyForGame(id);
+  }
+
   getVisibleOSDButtons() {
     const panel = document.querySelector('#osd .osd-panel');
     if (!panel) return [];
@@ -879,13 +928,22 @@ class GamepadManager {
     if (!document.body.classList.contains('playing')) return;
     if (this.isAnyOverlayOpen && this.isAnyOverlayOpen()) return;
 
-    const iframe = document.querySelector('iframe#gameframe');
+    // Per-game: optionally route only keydown (skip keyup/keypress)
+    const onlyDown = (this.isKeydownOnlyMode && this.isKeydownOnlyMode()) || false;
+    if (onlyDown && eventType !== 'keydown') return;
 
-    // Build a KeyboardEvent and force legacy keyCode/which/charCode for engines that still use them
+    const iframe = document.querySelector('iframe#gameframe');
+    let targetWin = null;
+    try { targetWin = iframe && iframe.contentWindow ? iframe.contentWindow : null; } catch (_) { targetWin = null; }
+    const targetDoc = (() => { try { return targetWin ? targetWin.document : null; } catch (_) { return null; } })();
+    const target = targetDoc || targetWin || document;
+
+    // Build a KeyboardEvent in the target context if available
     const key = mapping.keyboardKey;
     const code = key === ' ' ? 'Space' : (key.length === 1 ? `Key${key.toUpperCase()}` : key);
+    const EvtCtor = (targetWin && targetWin.KeyboardEvent) ? targetWin.KeyboardEvent : KeyboardEvent;
 
-    const evt = new KeyboardEvent(eventType, {
+    const evt = new EvtCtor(eventType, {
       key,
       code,
       bubbles: true,
@@ -893,51 +951,25 @@ class GamepadManager {
       composed: true,
     });
 
-    // Force read-only props via defineProperty so games checking keyCode/which see expected values
-    const setLegacyProps = (e, code) => {
+    const setLegacyProps = (e, codeVal) => {
       try {
-        Object.defineProperty(e, 'keyCode', { get: () => code });
-        Object.defineProperty(e, 'which', { get: () => code });
-        Object.defineProperty(e, 'charCode', { get: () => code });
+        Object.defineProperty(e, 'keyCode', { get: () => codeVal });
+        Object.defineProperty(e, 'which', { get: () => codeVal });
+        Object.defineProperty(e, 'charCode', { get: () => codeVal });
       } catch (_) { /* ignore */ }
     };
     setLegacyProps(evt, mapping.keyCode);
 
-    // Some engines only react to keypress for character keys like Space; synthesize it too
+    // Optionally synthesize keypress for Space on keydown when not in onlyDown mode
     const makePress = () => {
-      const press = new KeyboardEvent('keypress', { key, code, bubbles: true, cancelable: true, composed: true });
+      const press = new EvtCtor('keypress', { key, code, bubbles: true, cancelable: true, composed: true });
       setLegacyProps(press, mapping.keyCode);
       return press;
     };
 
-    const targets = [];
-    try {
-      if (iframe && iframe.contentDocument) {
-        const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
-        const active = doc.activeElement;
-        // Prefer focused element, then canvas, then document/window
-        const canvas = doc.querySelector('canvas');
-        if (active && typeof active.dispatchEvent === 'function') targets.push(active);
-        if (canvas) targets.push(canvas);
-        if (doc) targets.push(doc);
-        if (win) targets.push(win);
-        // Also dispatch to iframe element itself as a last resort
-        targets.push(iframe);
-      }
-    } catch (error) {
-      console.warn('Cross-origin iframe, will dispatch on main document:', error);
-    }
-    if (targets.length === 0) targets.push(document);
-
-    // console.log(`Dispatching ${eventType} event:`, { key, keyCode: mapping.keyCode, targetCount: targets.length });
-
-    // Dispatch keydown/keyup sequence, plus a keypress for character keys
-    for (const t of targets) {
-      try { t.dispatchEvent(evt); } catch (_) {}
-      if (key === ' ' && eventType === 'keydown') {
-        try { t.dispatchEvent(makePress()); } catch (_) {}
-      }
+    try { target.dispatchEvent(evt); } catch (_) {}
+    if (!onlyDown && key === ' ' && eventType === 'keydown') {
+      try { target.dispatchEvent(makePress()); } catch (_) {}
     }
   }
   
