@@ -23,6 +23,7 @@ const osdTitle = document.getElementById('osd-title');
 // Game menu elements
 const gameMenu = document.getElementById('game-menu');
 const gameMenuTitle = document.getElementById('game-menu-title');
+const updateGameBtn = document.getElementById('update-game-btn');
 const deleteGameBtn = document.getElementById('delete-game-btn');
 const cancelBtn = document.getElementById('cancel-btn');
 
@@ -408,9 +409,13 @@ function showGameMenu(game) {
   gameMenuTitle.textContent = capitalizedName;
   gameMenu.classList.remove('hidden');
 
-  // Store the current game for deletion
+  // Store the current game for actions
   gameMenu.dataset.gameId = game.id;
   gameMenu.dataset.gameIndex = games.indexOf(game);
+
+  // Show/hide update button
+  const isUpdatable = game.sourceInfo && (game.sourceInfo.source === 'github' || game.sourceInfo.source === 'url');
+  updateGameBtn.style.display = isUpdatable ? '' : 'none';
 }
 
 function hideGameMenu() {
@@ -449,6 +454,32 @@ async function deleteGame(gameId, gameIndex) {
 }
 
 // Game menu event handlers
+updateGameBtn.addEventListener('click', async () => {
+  const gameId = gameMenu.dataset.gameId;
+  if (!gameId) return;
+
+  try {
+    const res = await fetch(`/api/games/${gameId}/update`, { method: 'POST' });
+    if (res.ok) {
+      alert('Game updated successfully!');
+      // Optional: reload the game if it's currently being played
+      if (currentGame && currentGame.id === gameId) {
+        gameframe.src = gameframe.src; // This reloads the iframe
+      }
+      // Refresh thumbnail in case it changed
+      await fetchGames();
+    } else {
+      const errorText = await res.text();
+      throw new Error(`Update failed: ${errorText}`);
+    }
+  } catch (err) {
+    console.error('Error updating game:', err);
+    alert(err.message);
+  } finally {
+    hideGameMenu();
+  }
+});
+
 deleteGameBtn.addEventListener('click', () => {
   const gameId = gameMenu.dataset.gameId;
   const gameIndex = parseInt(gameMenu.dataset.gameIndex);

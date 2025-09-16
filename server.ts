@@ -88,12 +88,21 @@ const ROOT = getAppRoot();
 const GAMES_DIR = Deno.env.get("CMG_GAMES_DIR") ?? join(ROOT, "games");
 await ensureDir(GAMES_DIR);
 
+type SourceInfo = {
+  source: "github" | "url" | "zip";
+  repo?: string;
+  branch?: string;
+  url?: string;
+  subdir?: string;
+};
+
 type GameEntry = {
   id: string;
   name: string;
   path: string; // local filesystem path
   urlPath: string; // public URL path e.g., /games/<id>/
   hasThumbnail: boolean;
+  sourceInfo?: SourceInfo;
 };
 
 async function listGames(): Promise<GameEntry[]> {
@@ -103,6 +112,8 @@ async function listGames(): Promise<GameEntry[]> {
     const id = dirEntry.name;
     const fsPath = join(GAMES_DIR, id);
     const thumbnailPath = join(fsPath, "thumbnail.png");
+    const metadataPath = join(fsPath, "codemonkey.json");
+
     let hasThumbnail = false;
     try {
       const stat = await Deno.stat(thumbnailPath);
@@ -110,6 +121,15 @@ async function listGames(): Promise<GameEntry[]> {
     } catch (_) {
       hasThumbnail = false;
     }
+
+    let sourceInfo: SourceInfo | undefined = undefined;
+    try {
+      const metaContent = await Deno.readTextFile(metadataPath);
+      sourceInfo = JSON.parse(metaContent);
+    } catch (_) {
+      // Ignore if metadata doesn't exist or is invalid
+    }
+
     // Choose a display name from folder name
     const name = id.replace(/[-_]/g, " ");
     entries.push({
@@ -118,6 +138,7 @@ async function listGames(): Promise<GameEntry[]> {
       path: fsPath,
       urlPath: `/games/${id}/`,
       hasThumbnail,
+      sourceInfo,
     });
   }
   // stable sort
@@ -197,6 +218,24 @@ async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?
   try { await Deno.remove(extractRoot, { recursive: true }); } catch {}
 }
 
+async function downloadFromGithub(repo: string, branch: string): Promise<Uint8Array> {
+  const m = String(repo).match(/github.com\/(.+?)\/(.+?)(?:\.git)?$/);
+  if (!m) throw new Error("invalid repo url");
+  const owner = m[1];
+  const repoName = m[2];
+  const useBranch = branch || "main";
+  const zipUrl = `https://codeload.github.com/${owner}/${repoName}/zip/refs/heads/${useBranch}`;
+  const resp = await fetch(zipUrl);
+  if (!resp.ok) throw new Error("download failed");
+  return new Uint8Array(await resp.arrayBuffer());
+}
+
+async function downloadFromUrl(url: string): Promise<Uint8Array> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("download failed");
+  return new Uint8Array(await resp.arrayBuffer());
+}
+
 async function handleApi(req: Request): Promise<Response | undefined> {
   const json = (data: unknown, init: ResponseInit = {}) => {
     const headers = new Headers(init.headers || {});
@@ -227,38 +266,89 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     await ensureDir(target);
     const bytes = new Uint8Array(await file.arrayBuffer());
     await saveZipToDir(bytes, target, subdir);
+
+    // Write metadata
+    const sourceInfo: SourceInfo = { source: "zip" };
+    const metadataPath = join(target, "codemonkey.json");
+    await Deno.writeTextFile(metadataPath, JSON.stringify(sourceInfo, null, 2));
+
     return json({ ok: true, id });
   }
   if (url.pathname === "/api/add-game/from-github" && req.method === "POST") {
     const { repo, branch, subdir, name } = await req.json();
     if (!repo) return new Response("repo required", { status: 400 });
-    const m = String(repo).match(/github.com\/(.+?)\/(.+?)(?:\.git)?$/);
-    if (!m) return new Response("invalid repo url", { status: 400 });
-    const owner = m[1];
-    const repoName = m[2];
-    const useBranch = branch || "main";
-    const zipUrl = `https://codeload.github.com/${owner}/${repoName}/zip/refs/heads/${useBranch}`;
-    const resp = await fetch(zipUrl);
-    if (!resp.ok) return new Response("download failed", { status: 502 });
-    const zipBytes = new Uint8Array(await resp.arrayBuffer());
+    const repoName = String(repo).match(/github.com\/(.+?)\/(.+?)(?:\.git)?$/)?.[2] || 'game';
+    const zipBytes = await downloadFromGithub(repo, branch || "main");
     const id = (name || repoName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
     await saveZipToDir(zipBytes, target, subdir || "root");
+
+    // Write metadata
+    const sourceInfo: SourceInfo = { source: "github", repo, branch: branch || "main", subdir: subdir || "root" };
+    const metadataPath = join(target, "codemonkey.json");
+    await Deno.writeTextFile(metadataPath, JSON.stringify(sourceInfo, null, 2));
+
     return json({ ok: true, id });
   }
   if (url.pathname === "/api/add-game/from-url" && req.method === "POST") {
     const { url: gameUrl, subdir, name } = await req.json();
     if (!gameUrl) return new Response("url required", { status: 400 });
-    const resp = await fetch(gameUrl);
-    if (!resp.ok) return new Response("download failed", { status: 502 });
-    const zipBytes = new Uint8Array(await resp.arrayBuffer());
+    const zipBytes = await downloadFromUrl(gameUrl);
     const gameName = name || new URL(gameUrl).pathname.split('/').pop()?.replace(/\.zip$/, '') || 'game';
     const id = gameName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
     await saveZipToDir(zipBytes, target, subdir || "root");
+
+    // Write metadata
+    const sourceInfo: SourceInfo = { source: "url", url: gameUrl, subdir: subdir || "root" };
+    const metadataPath = join(target, "codemonkey.json");
+    await Deno.writeTextFile(metadataPath, JSON.stringify(sourceInfo, null, 2));
+
     return json({ ok: true, id });
+  }
+  if (url.pathname.startsWith("/api/games/") && url.pathname.endsWith("/update") && req.method === "POST") {
+    const id = url.pathname.split("/")[3];
+    const target = join(GAMES_DIR, id);
+
+    try {
+      const stat = await Deno.stat(target);
+      if (!stat.isDirectory) throw new Error("Game directory not found");
+    } catch {
+      return new Response("Game not found", { status: 404 });
+    }
+
+    const metadataPath = join(target, "codemonkey.json");
+    let sourceInfo: SourceInfo | undefined;
+    try {
+      const metaContent = await Deno.readTextFile(metadataPath);
+      sourceInfo = JSON.parse(metaContent);
+    } catch {
+      return new Response("Game metadata not found or invalid", { status: 400 });
+    }
+
+    if (!sourceInfo || !sourceInfo.source || sourceInfo.source === 'zip') {
+      return new Response("Game is not updatable", { status: 400 });
+    }
+
+    try {
+      let zipBytes: Uint8Array;
+      if (sourceInfo.source === 'github' && sourceInfo.repo) {
+        zipBytes = await downloadFromGithub(sourceInfo.repo, sourceInfo.branch || 'main');
+      } else if (sourceInfo.source === 'url' && sourceInfo.url) {
+        zipBytes = await downloadFromUrl(sourceInfo.url);
+      } else {
+        return new Response("Invalid source info in metadata", { status: 400 });
+      }
+
+      await saveZipToDir(zipBytes, target, sourceInfo.subdir);
+      return json({ ok: true, id });
+
+    } catch (err) {
+      console.error(`Update failed for game ${id}:`, err);
+      return new Response(`Update failed: ${err.message}`, { status: 500 });
+    }
   }
   if (url.pathname.startsWith("/api/games/") && url.pathname.endsWith("/thumbnail") && req.method === "POST") {
     const id = url.pathname.split("/")[3];
