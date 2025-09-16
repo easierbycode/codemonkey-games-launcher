@@ -192,8 +192,8 @@ const globalKeyHandler = (e) => {
   }
 };
 
+// Attach once at window level to avoid duplicate handling
 window.addEventListener('keydown', globalKeyHandler, { capture: true });
-document.addEventListener('keydown', globalKeyHandler, { capture: true });
 
 // Recenter on resize
 window.addEventListener('resize', updateCardTransforms);
