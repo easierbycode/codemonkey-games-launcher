@@ -571,10 +571,90 @@ const handler = async (req: Request) => {
     }
   }
 
-  // Serve games directory at /games/ manually for predictable behavior
+  // Serve games directory at /games/ with path clamping and Referer-based resolution
   if (url.pathname.startsWith("/games/")) {
-    const rel = decodeURIComponent(url.pathname.replace(/^\/games\//, ""));
-    const filePath = rel.endsWith("/") || rel === "" ? join(GAMES_DIR, rel, "index.html") : join(GAMES_DIR, rel);
+    const relRaw = decodeURIComponent(url.pathname.replace(/^\/games\//, ""));
+
+    // Sanitize a relative path, preventing traversal above base
+    const safeRel = (p: string): string => {
+      const parts = p.split("/");
+      const out: string[] = [];
+      for (const part of parts) {
+        if (!part || part === ".") continue;
+        if (part === "..") { if (out.length) out.pop(); continue; }
+        out.push(part);
+      }
+      return out.join("/");
+    };
+
+    // Try to extract a gameId from the Referer header
+    const ref = (req.headers.get("referer") || req.headers.get("referrer") || "").toString();
+    const refGameId = await (async () => {
+      if (!ref) return null as string | null;
+      try {
+        const ru = new URL(ref);
+        const rp = ru.pathname || "";
+        if (rp.startsWith("/games/")) {
+          const seg = rp.split("/")[2];
+          if (seg) return seg;
+        } else if (/^\/[A-Za-z0-9_-]+\/?/.test(rp)) {
+          const seg = rp.split("/")[1];
+          try {
+            const st = await Deno.stat(join(GAMES_DIR, seg));
+            if (st.isDirectory) return seg;
+          } catch {}
+        }
+      } catch {}
+      return null as string | null;
+    })();
+
+    // Resolve target path:
+    // 1) If first path segment is a valid game id, serve from it and clamp traversal
+    // 2) Else, if Referer points to a game, treat rel as inside that game's root (e.g., /games/assets/* -> /games/<id>/assets/*)
+    // 3) Fallback to legacy behavior
+    const segs = relRaw.split("/").filter(Boolean);
+    const first = segs[0] || "";
+    let filePath: string;
+    let isFromGameRoot = false;
+    try {
+      if (first) {
+        try {
+          const st = await Deno.stat(join(GAMES_DIR, first));
+          if (st.isDirectory) {
+            // Case 1: explicit /games/<gameId>/...
+            const rest = safeRel(segs.slice(1).join("/"));
+            const base = join(GAMES_DIR, first);
+            filePath = (relRaw.endsWith("/") || rest === "") ? join(base, "index.html") : join(base, rest);
+            isFromGameRoot = true;
+          } else {
+            throw new Error("not a dir");
+          }
+        } catch {
+          if (refGameId) {
+            // Case 2: Referer-based resolution (e.g., /games/assets/*)
+            const rest = safeRel(relRaw);
+            const base = join(GAMES_DIR, refGameId);
+            filePath = (relRaw.endsWith("/") || rest === "") ? join(base, "index.html") : join(base, rest);
+            isFromGameRoot = true;
+          } else {
+            // Case 3: Fallback
+            filePath = (relRaw.endsWith("/") || relRaw === "") ? join(GAMES_DIR, relRaw, "index.html") : join(GAMES_DIR, relRaw);
+          }
+        }
+      } else {
+        if (refGameId) {
+          const base = join(GAMES_DIR, refGameId);
+          filePath = join(base, "index.html");
+          isFromGameRoot = true;
+        } else {
+          filePath = join(GAMES_DIR, "index.html");
+        }
+      }
+    } catch {
+      // Ultimate fallback
+      filePath = (relRaw.endsWith("/") || relRaw === "") ? join(GAMES_DIR, relRaw, "index.html") : join(GAMES_DIR, relRaw);
+    }
+
     try {
       let data: Uint8Array = await Deno.readFile(filePath);
       let headersCt = (() => {
@@ -593,7 +673,7 @@ const handler = async (req: Request) => {
         filePath.toLowerCase().endsWith("/index.html") ||
         filePath.toLowerCase().endsWith("\\index.html") ||
         url.pathname.endsWith("/index.html") ||
-        url.pathname.endsWith("/")
+        (isFromGameRoot && url.pathname.endsWith("/"))
       );
       // Inject early OSD key listener, localStorage fix, and overflow hidden CSS into index.html pages
       if (isIndex) {
