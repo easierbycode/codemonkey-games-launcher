@@ -1026,8 +1026,8 @@ class GamepadManager {
                 </g>
                 
                 <!-- Analog sticks -->
-                <circle cx="140" cy="180" r="18" fill="#444" stroke="#666" stroke-width="2"></circle>
-                <circle cx="260" cy="180" r="18" fill="#444" stroke="#666" stroke-width="2"></circle>
+                <circle cx="140" cy="180" r="18" fill="#444" stroke="#666" stroke-width="2" class="stick-left-base"></circle>
+                <circle cx="260" cy="180" r="18" fill="#444" stroke="#666" stroke-width="2" class="stick-right-base"></circle>
                 <circle cx="140" cy="180" r="8" fill="#555" class="config-btn stick-left" data-group="special" data-button="leftStick"></circle>
                 <circle cx="260" cy="180" r="8" fill="#555" class="config-btn stick-right" data-group="special" data-button="rightStick"></circle>
               </svg>
@@ -1556,6 +1556,8 @@ class GamepadManager {
       { sel: '.special-start', key: 'start' },
       { sel: '.stick-left', key: 'leftStick' },
       { sel: '.stick-right', key: 'rightStick' },
+      { sel: '.stick-left-base', key: 'leftStick' },
+      { sel: '.stick-right-base', key: 'rightStick' },
     ];
 
     for (const m of map) {
