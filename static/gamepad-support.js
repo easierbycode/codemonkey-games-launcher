@@ -1987,6 +1987,7 @@ const configuratorCSS = `
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow-y: auto;
 }
 
 .mapping-info h3 {
