@@ -146,59 +146,127 @@ async function listGames(): Promise<GameEntry[]> {
   return entries;
 }
 
-async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?: string) {
+async function extractArchiveToDir(
+  archiveBytes: Uint8Array,
+  archiveName: string,
+  targetDir: string,
+  subdirHint?: string,
+) {
   await ensureDir(targetDir);
-  const tmpZip = await Deno.makeTempFile({ suffix: ".zip" });
-  await Deno.writeFile(tmpZip, zipBytes);
-  const extractRoot = await Deno.makeTempDir();
+
+  const name = archiveName.toLowerCase();
   let extracted = false;
-  // Try system 'unzip'
-  try {
-    const unzip = new Deno.Command("unzip", {
-      args: ["-q", "-o", tmpZip, "-d", extractRoot],
-      stderr: "inherit",
-      stdout: "inherit",
-    });
-    const { success } = await unzip.output();
-    extracted = !!success;
-  } catch (_) { /* ignore */ }
-  // On macOS, fallback to 'ditto'
-  if (!extracted && Deno.build.os === "darwin") {
-    try {
-      const ditto = new Deno.Command("/usr/bin/ditto", {
-        args: ["-x", "-k", tmpZip, extractRoot],
-        stderr: "inherit",
-        stdout: "inherit",
-      });
-      const { success } = await ditto.output();
-      extracted = !!success;
-    } catch (_) { /* ignore */ }
-  }
-  // On Windows, fallback to PowerShell Expand-Archive
-  if (!extracted && Deno.build.os === "windows") {
-    try {
-      const zipPath = tmpZip.replace(/'/g, "''");
-      const outPath = extractRoot.replace(/'/g, "''");
-      const psScript = `
-        $ErrorActionPreference='Stop';
-        if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
-          Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${outPath}' -Force
-        } else {
-          throw 'Expand-Archive not available'
+  const extractRoot = await Deno.makeTempDir();
+  const tmpArchive = await Deno.makeTempFile();
+  await Deno.writeFile(tmpArchive, archiveBytes);
+
+  // macOS: handle .dmg, .pkg
+  if (Deno.build.os === "darwin") {
+    if (name.endsWith(".dmg")) {
+      // Mount DMG, find .app, copy it out
+      let mountPoint: string | null = null;
+      try {
+        const attach = new Deno.Command("hdiutil", {
+          args: ["attach", "-nobrowse", "-mountpoint", await Deno.makeTempDir(), tmpArchive],
+          stderr: "piped",
+          stdout: "piped",
+        });
+        const { success, stdout } = await attach.output();
+        if (success) {
+          mountPoint = new TextDecoder().decode(stdout).trim().split("\t").pop() ?? null;
+          if (mountPoint) {
+            // Find the .app directory
+            let appDir: string | null = null;
+            for await (const entry of Deno.readDir(mountPoint)) {
+              if (entry.isDirectory && entry.name.endsWith(".app")) {
+                appDir = join(mountPoint, entry.name);
+                break;
+              }
+            }
+            if (appDir) {
+              await copy(appDir, extractRoot, { overwrite: true });
+              extracted = true;
+            }
+          }
         }
-      `;
-      const ps = new Deno.Command("powershell.exe", {
-        args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psScript],
+      } catch (e) {
+        console.error("DMG extraction failed:", e);
+      } finally {
+        if (mountPoint) {
+          try {
+            await new Deno.Command("hdiutil", { args: ["detach", mountPoint] }).output();
+          } catch { /* ignore */ }
+        }
+      }
+    } else if (name.endsWith(".pkg")) {
+      try {
+        const xar = new Deno.Command("xar", {
+          args: ["-xf", tmpArchive, "-C", extractRoot],
+          stderr: "inherit",
+          stdout: "inherit",
+        });
+        const { success } = await xar.output();
+        extracted = !!success;
+      } catch (e) {
+        console.error("PKG extraction via xar failed:", e);
+      }
+    }
+  }
+
+  // Handle .zip (all platforms)
+  if (name.endsWith(".zip")) {
+    // Try system 'unzip'
+    try {
+      const unzip = new Deno.Command("unzip", {
+        args: ["-q", "-o", tmpArchive, "-d", extractRoot],
         stderr: "inherit",
         stdout: "inherit",
       });
-      const { success } = await ps.output();
+      const { success } = await unzip.output();
       extracted = !!success;
     } catch (_) { /* ignore */ }
+    // On macOS, fallback to 'ditto'
+    if (!extracted && Deno.build.os === "darwin") {
+      try {
+        const ditto = new Deno.Command("/usr/bin/ditto", {
+          args: ["-x", "-k", tmpArchive, extractRoot],
+          stderr: "inherit",
+          stdout: "inherit",
+        });
+        const { success } = await ditto.output();
+        extracted = !!success;
+      } catch (_) { /* ignore */ }
+    }
+    // On Windows, fallback to PowerShell Expand-Archive
+    if (!extracted && Deno.build.os === "windows") {
+      try {
+        const zipPath = tmpArchive.replace(/'/g, "''");
+        const outPath = extractRoot.replace(/'/g, "''");
+        const psScript = `
+          $ErrorActionPreference='Stop';
+          if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
+            Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${outPath}' -Force
+          } else {
+            throw 'Expand-Archive not available'
+          }
+        `;
+        const ps = new Deno.Command("powershell.exe", {
+          args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psScript],
+          stderr: "inherit",
+          stdout: "inherit",
+        });
+        const { success } = await ps.output();
+        extracted = !!success;
+      } catch (_) { /* ignore */ }
+    }
   }
+
   if (!extracted) {
-    throw new Error("Failed to extract zip: no system unzip available. Install 'unzip' (Linux), rely on 'ditto' (macOS), or ensure PowerShell is present (Windows).\nTried: unzip, ditto, PowerShell Expand-Archive");
+    throw new Error(
+      "Failed to extract archive. Supported formats: .zip, .dmg (macOS), .pkg (macOS). Ensure system tools (unzip, ditto, xar, PowerShell) are available.",
+    );
   }
+
   // Determine base directory inside extracted content
   let base = extractRoot;
   const topLevel: string[] = [];
@@ -214,8 +282,14 @@ async function saveZipToDir(zipBytes: Uint8Array, targetDir: string, subdirHint?
   }
   await ensureDir(targetDir);
   await copy(base, targetDir, { overwrite: true });
-  try { await Deno.remove(tmpZip); } catch {}
-  try { await Deno.remove(extractRoot, { recursive: true }); } catch {}
+  try {
+    await Deno.remove(tmpArchive);
+  } catch {
+  }
+  try {
+    await Deno.remove(extractRoot, { recursive: true });
+  } catch {
+  }
 }
 
 async function downloadFromGithub(repo: string, branch: string): Promise<Uint8Array> {
@@ -265,7 +339,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await saveZipToDir(bytes, target, subdir);
+    await extractArchiveToDir(bytes, file.name, target, subdir);
 
     // Write metadata
     const sourceInfo: SourceInfo = { source: "zip" };
@@ -282,7 +356,7 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     const id = (name || repoName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
-    await saveZipToDir(zipBytes, target, subdir || "root");
+    await extractArchiveToDir(zipBytes, `${repoName}.zip`, target, subdir || "root");
 
     // Write metadata
     const sourceInfo: SourceInfo = { source: "github", repo, branch: branch || "main", subdir: subdir || "root" };
@@ -295,11 +369,12 @@ async function handleApi(req: Request): Promise<Response | undefined> {
     const { url: gameUrl, subdir, name } = await req.json();
     if (!gameUrl) return new Response("url required", { status: 400 });
     const zipBytes = await downloadFromUrl(gameUrl);
-    const gameName = name || new URL(gameUrl).pathname.split('/').pop()?.replace(/\.zip$/, '') || 'game';
+    const gameName = name || new URL(gameUrl).pathname.split('/').pop()?.replace(/\.(zip|dmg|pkg)$/, '') || 'game';
+    const archiveName = new URL(gameUrl).pathname.split('/').pop() || 'archive.zip';
     const id = gameName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const target = join(GAMES_DIR, id);
     await ensureDir(target);
-    await saveZipToDir(zipBytes, target, subdir || "root");
+    await extractArchiveToDir(zipBytes, archiveName, target, subdir || "root");
 
     // Write metadata
     const sourceInfo: SourceInfo = { source: "url", url: gameUrl, subdir: subdir || "root" };
@@ -342,7 +417,10 @@ async function handleApi(req: Request): Promise<Response | undefined> {
         return new Response("Invalid source info in metadata", { status: 400 });
       }
 
-      await saveZipToDir(zipBytes, target, sourceInfo.subdir);
+      const archiveName = sourceInfo.source === 'github'
+        ? `${sourceInfo.repo?.split('/').pop()}.zip`
+        : new URL(sourceInfo.url || '').pathname.split('/').pop() || 'archive.zip';
+      await extractArchiveToDir(zipBytes, archiveName, target, sourceInfo.subdir);
       return json({ ok: true, id });
 
     } catch (err) {
