@@ -160,8 +160,8 @@ class GamepadManager {
       // Special states
       osdCombo: false,
       // Analog stick digital states
-      leftStick: { left: false, right: false, up: false, down: false },
-      rightStick: { left: false, right: false, up: false, down: false }
+      leftStick: { pressed: false, nav: { left: false, right: false, up: false, down: false } },
+      rightStick: { pressed: false, nav: { left: false, right: false, up: false, down: false } }
     };
     
     this.analogState[gamepad.index] = { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 } };
@@ -242,7 +242,8 @@ class GamepadManager {
       const button = controller.buttons[buttonMapping.gamepadButton];
 
       if (button) {
-        const wasPressed = prevButtonState[buttonName] || false;
+        const isStick = buttonName === 'leftStick' || buttonName === 'rightStick';
+        const wasPressed = isStick ? (prevButtonState[buttonName] && prevButtonState[buttonName].pressed) : (prevButtonState[buttonName] || false);
         const isPressed = button.pressed;
 
         const swallow = this.shouldSwallowFor(controllerIndex);
@@ -293,7 +294,11 @@ class GamepadManager {
           }
         }
 
-        this.buttonState[controllerIndex][buttonName] = isPressed;
+        if (isStick) {
+          this.buttonState[controllerIndex][buttonName].pressed = isPressed;
+        } else {
+          this.buttonState[controllerIndex][buttonName] = isPressed;
+        }
       }
     }
   }
@@ -347,16 +352,18 @@ class GamepadManager {
   
   processAnalogToDigital(stick, controllerIndex, stickName, controller, mapping) {
     const threshold = 0.5;
+    const stickState = this.buttonState[controllerIndex][stickName];
+
     if (this.shouldSwallowFor(controllerIndex)) {
       // Do not route navigation while testing
       const leftPressed = stick.x < -threshold;
       const rightPressed = stick.x > threshold;
       const upPressed = stick.y < -threshold;
       const downPressed = stick.y > threshold;
-      this.buttonState[controllerIndex][stickName] = { left: leftPressed, right: rightPressed, up: upPressed, down: downPressed };
+      stickState.nav = { left: leftPressed, right: rightPressed, up: upPressed, down: downPressed };
       return;
     }
-    const prevState = this.buttonState[controllerIndex][stickName] || {};
+    const prevState = stickState.nav || {};
 
     // When not in-game, suppress analog navigation if D-pad is active to avoid duplicates
     if (!document.body.classList.contains('playing') && controller && mapping && mapping.dpad) {
@@ -369,7 +376,7 @@ class GamepadManager {
           controller.buttons[dm.down?.gamepadButton]?.pressed
         );
         if (dpadAny) {
-          this.buttonState[controllerIndex][stickName] = { left: false, right: false, up: false, down: false };
+          stickState.nav = { left: false, right: false, up: false, down: false };
           return;
         }
       } catch (_) { /* ignore */ }
@@ -393,7 +400,7 @@ class GamepadManager {
     if (upPressed && !wasUpPressed) { this.routeNavigation('up'); }
     if (downPressed && !wasDownPressed) { this.routeNavigation('down'); }
     
-    this.buttonState[controllerIndex][stickName] = {
+    stickState.nav = {
       left: leftPressed,
       right: rightPressed,
       up: upPressed,
@@ -1588,8 +1595,6 @@ class GamepadManager {
       { sel: '.special-start', key: 'start' },
       { sel: '.stick-left', key: 'leftStick' },
       { sel: '.stick-right', key: 'rightStick' },
-      { sel: '.stick-left-base', key: 'leftStick' },
-      { sel: '.stick-right-base', key: 'rightStick' },
     ];
 
     for (const m of map) {
@@ -1598,6 +1603,24 @@ class GamepadManager {
       if (pressed[m.key]) el.classList.add('testing-pressed');
       else el.classList.remove('testing-pressed');
     }
+
+    // Handle stick base highlighting for movement
+    const checkStickNav = (stickName) => {
+      let moved = false;
+      for (const idx in this.controllers) {
+        const state = this.buttonState[idx] && this.buttonState[idx][stickName];
+        if (state && state.nav && (state.nav.left || state.nav.right || state.nav.up || state.nav.down)) {
+          moved = true;
+          break;
+        }
+      }
+      const baseEl = root.querySelector(`.stick-${stickName.replace('Stick', '').toLowerCase()}-base`);
+      if (baseEl) {
+        baseEl.classList.toggle('testing-pressed', moved);
+      }
+    };
+    checkStickNav('leftStick');
+    checkStickNav('rightStick');
 
     // Show analog stick thumb offsets
     try {
@@ -1649,7 +1672,14 @@ class GamepadManager {
     for (let idx of indices) {
       const bs = this.buttonState[idx] || {};
       for (let k in names) {
-        if (Object.prototype.hasOwnProperty.call(bs, k)) names[k] = !!(names[k] || bs[k]);
+        if (Object.prototype.hasOwnProperty.call(bs, k)) {
+          const state = bs[k];
+          if (typeof state === 'object' && state !== null && 'pressed' in state) {
+            names[k] = !!(names[k] || state.pressed);
+          } else {
+            names[k] = !!(names[k] || state);
+          }
+        }
       }
     }
     return names;
