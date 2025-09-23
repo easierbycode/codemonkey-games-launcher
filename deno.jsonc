@@ -36,9 +36,11 @@
     }
   },
   "imports": {
-    "fresh": "jsr:@fresh/core@2.1.1",
-    "preact": "npm:preact@^10.27.0",
-    "@preact/signals": "npm:@preact/signals@^2.2.1",
+    "$fresh/": "https://deno.land/x/fresh@1.6.8/",
+    "fresh": "https://deno.land/x/fresh@1.6.8/mod.ts",
+    "preact": "https://esm.sh/preact@10.19.6",
+    "preact/": "https://esm.sh/preact@10.19.6/",
+    "@preact/signals": "https://esm.sh/*@preact/signals@1.2.2",
     "tailwindcss": "npm:tailwindcss@3.4.1",
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",

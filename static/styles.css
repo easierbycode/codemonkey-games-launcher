@@ -9,6 +9,7 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+html.playing, body.playing { overflow: hidden; }
 body {
   display: flex;
   flex-direction: column;

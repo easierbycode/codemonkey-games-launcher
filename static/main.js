@@ -138,6 +138,7 @@ function focusIndex(i, open) {
 function openGame(game) {
   gameframe.src = game.urlPath + 'index.html';
   document.body.classList.add('playing');
+  document.documentElement.classList.add('playing');
   currentGame = game;
   // Update exit button text with current game name
   exitGameBtn.textContent = `Exit ${game.name}`;
@@ -156,6 +157,7 @@ function openGame(game) {
 function exitGame() {
   gameframe.src = 'about:blank';
   document.body.classList.remove('playing');
+  document.documentElement.classList.remove('playing');
   currentGame = null;
   // Reset exit button text
   exitGameBtn.textContent = 'Exit game';
@@ -567,6 +569,18 @@ function bindIframeKeys() {
   try {
     const w = gameframe.contentWindow; const d = gameframe.contentDocument;
     if (!w || !d) return;
+    try {
+      const docEl = d.documentElement;
+      const bodyEl = d.body || d.querySelector("body");
+      if (docEl) {
+        docEl.style.overflow = "hidden";
+        docEl.style.height = "100%";
+      }
+      if (bodyEl) {
+        bodyEl.style.overflow = "hidden";
+        bodyEl.style.height = "100%";
+      }
+    } catch {}
     const handler = (e) => {
       if (isOSDKey(e)) {
         e.preventDefault();

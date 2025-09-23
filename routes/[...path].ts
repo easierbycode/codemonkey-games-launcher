@@ -1,4 +1,4 @@
-import { Handlers } from "fresh";
+import { HandlerContext, Handlers } from "$fresh/server.ts";
 import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { GAMES_DIR, ROOT } from "../lib/utils.ts";
@@ -157,11 +157,25 @@ async function serveFile(filePath: string, isIndex: boolean): Promise<Response> 
     let data = await Deno.readFile(filePath);
     let ct = contentType(filePath) ?? "application/octet-stream";
 
+    if (ct === "application/octet-stream") {
+      const lower = filePath.toLowerCase();
+      if (lower.endsWith(".js") || lower.endsWith(".mjs")) {
+        ct = "text/javascript";
+      } else if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+        ct = "text/html; charset=utf-8";
+      } else if (lower.endsWith(".css")) {
+        ct = "text/css";
+      }
+    }
+
     if (isIndex) {
       try {
         const html = new TextDecoder().decode(data);
         const injectedHtml = injectHtml(html);
-        data = new TextEncoder().encode(injectedHtml);
+        const encoded = new TextEncoder().encode(injectedHtml);
+        const copied = new Uint8Array(encoded.length);
+        copied.set(encoded);
+        data = copied;
         ct = "text/html; charset=utf-8";
       } catch { /* ignore if not valid html */ }
     }
@@ -176,7 +190,7 @@ async function serveFile(filePath: string, isIndex: boolean): Promise<Response> 
 }
 
 export const handler: Handlers = {
-  async GET(req, _ctx) {
+  async GET(req: Request, _ctx: HandlerContext) {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
