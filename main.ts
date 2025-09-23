@@ -5,6 +5,10 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.unstable" />
 
-import { start } from "fresh";
+import { App, staticFiles } from "fresh";
 
-await start({ onListen: () => {} });
+export const app = new App()
+  // Add static file serving middleware
+  .use(staticFiles())
+  // Enable file-system based routing
+  .fsRoutes();
