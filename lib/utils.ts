@@ -23,6 +23,12 @@ export type SourceInfo = {
   subdir?: string;
 };
 
+export type RecommendedButton = {
+  label: string;
+  mapsTo: string;
+  elementId: string;
+};
+
 export type GameEntry = {
   id: string;
   name: string;
@@ -30,6 +36,15 @@ export type GameEntry = {
   urlPath: string;
   hasThumbnail: boolean;
   sourceInfo?: SourceInfo;
+  recommendedButtons?: RecommendedButton[];
+};
+
+const DEFAULT_CONFIGS: Record<string, { recommendedButtons: RecommendedButton[] }> = {
+  "monkey combat": {
+    recommendedButtons: [
+      { label: "Start", mapsTo: "start", elementId: "character-select" },
+    ],
+  },
 };
 
 export async function listGames(): Promise<GameEntry[]> {
@@ -49,22 +64,30 @@ export async function listGames(): Promise<GameEntry[]> {
       hasThumbnail = false;
     }
 
-    let sourceInfo: SourceInfo | undefined = undefined;
+    let metadata: Partial<GameEntry> = {};
     try {
       const metaContent = await Deno.readTextFile(metadataPath);
-      sourceInfo = JSON.parse(metaContent);
+      metadata = JSON.parse(metaContent);
     } catch (_) {
       // Ignore if metadata doesn't exist or is invalid
     }
 
     const name = id.replace(/[-_]/g, " ");
+
+    // Apply default config if it exists for the game
+    const defaultConfig = DEFAULT_CONFIGS[name.toLowerCase()];
+    if (defaultConfig && !metadata.recommendedButtons) {
+      metadata.recommendedButtons = defaultConfig.recommendedButtons;
+    }
+
     entries.push({
       id,
       name,
       path: fsPath,
       urlPath: `/games/${id}/`,
       hasThumbnail,
-      sourceInfo,
+      sourceInfo: metadata.sourceInfo,
+      recommendedButtons: metadata.recommendedButtons,
     });
   }
   entries.sort((a, b) => a.name.localeCompare(b.name));
