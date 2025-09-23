@@ -1,8 +1,9 @@
 {
   "tasks": {
     "start": "deno run -A --watch=static/,routes/,islands/ main.ts",
-    "dev": "deno run -A --watch=static/,routes/,islands/ main.ts",
-    "build": "deno run -A main.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "deno serve -A _fresh/server.js",
     "copy:assets:windows": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force build/windows | Out-Null; Copy-Item -Recurse -Force static build/windows/static; if (Test-Path games) { Copy-Item -Recurse -Force games build/windows/games }\"",
     "build:windows": "deno compile --allow-all --target x86_64-pc-windows-msvc --output build/windows/codemonkey-games-launcher.exe main.ts && deno task copy:assets:windows",
     "run:windows": "build/windows/codemonkey-games-launcher.exe",
@@ -40,6 +41,8 @@
     "@preact/signals": "npm:@preact/signals@^2.2.1",
     "tailwindcss": "npm:tailwindcss@3.4.1",
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
-    "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js"
+    "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
+    "vite": "npm:vite@^5.3.3",
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^0.1.0"
   }
 }
