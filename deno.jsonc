@@ -2,7 +2,7 @@
   "tasks": {
     "start": "deno run -A --watch=static/,routes/,islands/ main.ts",
     "dev": "deno run -A --watch=static/,routes/,islands/ main.ts",
-    "build": "deno run -A dev.ts --build",
+    "build": "deno run -A main.ts",
     "copy:assets:windows": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force build/windows | Out-Null; Copy-Item -Recurse -Force static build/windows/static; if (Test-Path games) { Copy-Item -Recurse -Force games build/windows/games }\"",
     "build:windows": "deno compile --allow-all --target x86_64-pc-windows-msvc --output build/windows/codemonkey-games-launcher.exe main.ts && deno task copy:assets:windows",
     "run:windows": "build/windows/codemonkey-games-launcher.exe",
@@ -35,11 +35,9 @@
     }
   },
   "imports": {
-    "$fresh/": "https://deno.land/x/fresh@1.6.8/",
-    "preact": "https://esm.sh/preact@10.19.6",
-    "preact/": "https://esm.sh/preact@10.19.6/",
-    "@preact/signals": "https://esm.sh/*@preact/signals@1.2.2",
-    "@preact/signals-core": "https://esm.sh/*@preact/signals-core@1.5.1",
+    "fresh": "jsr:@fresh/core@2.0.0-alpha.18",
+    "preact": "npm:preact@^10.22.0",
+    "@preact/signals": "npm:@preact/signals@^1.2.3",
     "tailwindcss": "npm:tailwindcss@3.4.1",
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js"
