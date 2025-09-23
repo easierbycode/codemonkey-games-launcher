@@ -36,8 +36,8 @@
   },
   "imports": {
     "fresh": "jsr:@fresh/core@2.1.1",
-    "preact": "npm:preact@10.22.1",
-    "@preact/signals": "npm:@preact/signals@1.2.4",
+    "preact": "npm:preact@^10.27.0",
+    "@preact/signals": "npm:@preact/signals@^2.2.1",
     "tailwindcss": "npm:tailwindcss@3.4.1",
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js"
