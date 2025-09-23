@@ -1,6 +1,6 @@
 import { Handlers } from "$fresh/server.ts";
 import { GAMES_DIR } from "../../../../lib/utils.ts";
-import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { join } from "https://deno.land/std@0.216.0/path/mod.ts";
 
 export const handler: Handlers = {
   async POST(req, ctx) {

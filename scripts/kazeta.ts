@@ -1,8 +1,8 @@
 // Build Kazeta-compatible package output in ./build/kazeta
 // Produces: build/kazeta/{site files}/, app.kzi, icon.png (64x64)
-import { ensureDir } from "https://deno.land/std@0.224.0/fs/ensure_dir.ts";
-import { copy } from "https://deno.land/std@0.224.0/fs/copy.ts";
-import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { ensureDir } from "https://deno.land/std@0.216.0/fs/ensure_dir.ts";
+import { copy } from "https://deno.land/std@0.216.0/fs/copy.ts";
+import { join } from "https://deno.land/std@0.216.0/path/mod.ts";
 
 const ROOT = new URL("..", import.meta.url);
 const OUT = join(Deno.cwd(), "build", "kazeta");
