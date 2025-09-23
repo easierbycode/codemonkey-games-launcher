@@ -1,6 +1,6 @@
-import { ensureDir } from "https://deno.land/std@0.216.0/fs/ensure_dir.ts";
-import { copy } from "https://deno.land/std@0.216.0/fs/copy.ts";
-import { join, fromFileUrl, dirname, basename } from "https://deno.land/std@0.216.0/path/mod.ts";
+import { ensureDir } from "https://deno.land/std@0.224.0/fs/ensure_dir.ts";
+import { copy } from "https://deno.land/std@0.224.0/fs/copy.ts";
+import { join, fromFileUrl, dirname, basename } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 export function getAppRoot(): string {
   const exeBase = basename(Deno.execPath()).toLowerCase();

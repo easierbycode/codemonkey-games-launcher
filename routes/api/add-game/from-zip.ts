@@ -4,8 +4,8 @@ import {
   GAMES_DIR,
   SourceInfo,
 } from "../../../lib/utils.ts";
-import { ensureDir } from "https://deno.land/std@0.216.0/fs/ensure_dir.ts";
-import { join } from "https://deno.land/std@0.216.0/path/mod.ts";
+import { ensureDir } from "https://deno.land/std@0.224.0/fs/ensure_dir.ts";
+import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 export const handler: Handlers = {
   async POST(req, _ctx) {

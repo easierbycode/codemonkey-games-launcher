@@ -1,6 +1,6 @@
-import { Handlers } from "$fresh/server.ts";
-import { contentType } from "https://deno.land/std@0.216.0/media_types/mod.ts";
-import { join } from "https://deno.land/std@0.216.0/path/mod.ts";
+import { Handlers } from "fresh";
+import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
+import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { GAMES_DIR, ROOT } from "../lib/utils.ts";
 
 const injections = {
