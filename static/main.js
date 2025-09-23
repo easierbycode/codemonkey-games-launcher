@@ -19,6 +19,7 @@ const exitGameBtn = document.getElementById('exit-game');
 const clearStorageBtn = document.getElementById('clear-storage');
 const reloadPageBtn = document.getElementById('reload-page');
 const osdTitle = document.getElementById('osd-title');
+const recommendedButtonsEl = document.getElementById('recommended-buttons');
 
 // Game menu elements
 const gameMenu = document.getElementById('game-menu');
@@ -216,12 +217,57 @@ function toggleOSD(show) {
   }
   // Inform the game iframe to show/hide cursor and block inputs when game OSD is open
   if (!global) {
+    // Render recommended buttons
+    recommendedButtonsEl.innerHTML = '';
+    if (currentGame?.recommendedButtons?.length) {
+      for (const btn of currentGame.recommendedButtons) {
+        const buttonEl = el('button', '', btn.label);
+        buttonEl.addEventListener('click', () => {
+          // Game developers: To handle recommended button actions,
+          // listen for the 'message' event from the launcher.
+          /*
+          window.addEventListener('message', (ev) => {
+            // The launcher and game are same-origin, but checking is good practice.
+            if (ev.source !== window.parent) return;
+
+            const msg = ev.data;
+            if (msg && msg.cmg === 'map_button') {
+              console.log(`Received mapping for '${msg.mapsTo}' to element '#${msg.elementId}'`);
+
+              // Example: Find the element and simulate a click
+              const targetElement = document.getElementById(msg.elementId);
+              if (targetElement) {
+                // You can now trigger this element, for example:
+                // targetElement.click();
+                // Or map a gamepad button to it.
+              }
+            }
+          });
+          */
+          try {
+            gameframe.contentWindow.postMessage({
+              cmg: 'map_button',
+              mapsTo: btn.mapsTo,
+              elementId: btn.elementId,
+            }, location.origin);
+          } catch (e) {
+            console.error('Failed to post message to game iframe', e);
+          }
+          toggleOSD(false);
+        });
+        recommendedButtonsEl.appendChild(buttonEl);
+      }
+    }
+
     try {
       if (gameframe.contentWindow) {
         gameframe.contentWindow.postMessage({ cmg: 'cursor', visible: !!show }, location.origin);
         gameframe.contentWindow.postMessage({ cmg: 'input', blocked: !!show }, location.origin);
       }
     } catch {}
+  } else {
+    // Clear buttons when in global OSD
+    recommendedButtonsEl.innerHTML = '';
   }
 }
 osdClose.addEventListener('click', () => toggleOSD(false));

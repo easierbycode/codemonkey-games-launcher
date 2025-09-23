@@ -21,13 +21,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: "1.42.0"
-
-      - name: Check Deno version
-        run: deno --version
-
-      - name: Inspect dependency tree
-        run: deno info --json --no-lock main.ts
+          deno-version: v2.x
 
       - name: Build step
         run: "deno task build"
