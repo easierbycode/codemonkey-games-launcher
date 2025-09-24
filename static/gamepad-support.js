@@ -144,6 +144,25 @@ class GamepadManager {
     this.controllers[gamepad.index] = gamepad;
     this.controllerMappings[controllerId] = this.loadMapping(controllerId);
     this.controllerUseWASD[controllerId] = this.loadUseWASDPreference(controllerId);
+
+    // If this is the 2nd gamepad connecting, ensure one is wasd and the other is arrowkeys
+    try {
+      const connectedControllers = Object.values(this.controllers).filter(c => c && c.id);
+      // Check if we are adding the second controller
+      if (connectedControllers.length === 1) {
+        const firstController = connectedControllers[0];
+        if (firstController) {
+          const firstId = this.getControllerId(firstController);
+          const firstUsesWASD = this.controllerUseWASD[firstId];
+          // If first controller is NOT using WASD, and this one has no preference, default it to ON
+          if (!firstUsesWASD && localStorage.getItem(`gamepadUseWASD_${controllerId}`) === null) {
+            this.controllerUseWASD[controllerId] = true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error during 2nd gamepad WASD defaulting logic:', e);
+    }
     
     // Initialize button state for all expected buttons
     this.buttonState[gamepad.index] = {
