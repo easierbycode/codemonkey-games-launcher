@@ -8,6 +8,7 @@
 import { start } from "$fresh/server.ts";
 import manifest from "./fresh.gen.ts";
 import { ROOT } from "./lib/utils.ts";
+import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 const RUNTIME_CONFIG = JSON.stringify({
   imports: {
@@ -122,13 +123,46 @@ async function launchKiosk(url: string) {
   }
 
   try {
+    const profileHint = Deno.env.get("CMG_KIOSK_PROFILE") ?? "";
+    const args = [
+      "--kiosk",
+      "--start-fullscreen",
+      "--no-first-run",
+      "--disable-session-crashed-bubble",
+      "--disable-infobars",
+      "--autoplay-policy=no-user-gesture-required",
+      `--app=${url}`,
+    ];
+
+    if (profileHint.toLowerCase() === "guest") {
+      args.push("--guest");
+    } else {
+      let profileDir = profileHint;
+      let profileDirectoryArg: string | null = null;
+
+      if (!profileDir) {
+        profileDir = join(ROOT, "chrome-profile");
+        profileDirectoryArg = "Default";
+      }
+
+      try {
+        await Deno.mkdir(profileDir, { recursive: true });
+        args.push(`--user-data-dir=${profileDir}`);
+        if (profileDirectoryArg) {
+          args.push(`--profile-directory=${profileDirectoryArg}`);
+        }
+      } catch (err) {
+        console.error("Failed to prepare kiosk profile directory:", err);
+      }
+    }
+
+    const extraArgs = (Deno.env.get("CMG_KIOSK_EXTRA_ARGS") ?? "")
+      .split(/\s+/)
+      .filter((token) => token.length > 0);
+    args.push(...extraArgs);
+
     new Deno.Command(browserPath, {
-      args: [
-        "--kiosk",
-        "--no-first-run",
-        "--disable-session-crashed-bubble",
-        `--app=${url}`,
-      ],
+      args,
       detached: true,
       stderr: "null",
       stdout: "null",
