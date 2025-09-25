@@ -5,15 +5,13 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.unstable" />
 
-import { start } from "$fresh/server.ts";
+import { App } from "jsr:@fresh/core@^2.1.1";
 import manifest from "./fresh.gen.ts";
 import { ROOT } from "./lib/utils.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 const RUNTIME_CONFIG = JSON.stringify({
   imports: {
-    "$fresh/": "https://deno.land/x/fresh@1.6.8/",
-    "fresh": "https://deno.land/x/fresh@1.6.8/mod.ts",
     "preact": "https://esm.sh/preact@10.19.6",
     "preact/": "https://esm.sh/preact@10.19.6/",
     "@preact/signals": "https://esm.sh/*@preact/signals@1.2.2",
@@ -22,7 +20,7 @@ const RUNTIME_CONFIG = JSON.stringify({
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
     "vite": "npm:vite@^5.3.3",
-    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^0.1.0"
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.4"
   },
   compilerOptions: {
     jsx: "react-jsx",
@@ -189,7 +187,8 @@ let kioskLaunched = false;
 for (let offset = 0; offset <= MAX_PORT_OFFSET; offset++) {
   const port = BASE_PORT + offset;
   try {
-    await start(manifest, {
+    const app = new App(manifest);
+    await app.listen({
       port,
       hostname: HOSTNAME,
       onListen: ({ hostname, port }) => {

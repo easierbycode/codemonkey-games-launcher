@@ -1,4 +1,4 @@
-import { Handlers } from "$fresh/server.ts";
+import { Handlers } from "jsr:@fresh/core@^2.1.1/compat";
 import { GAMES_DIR } from "../../../../lib/utils.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
