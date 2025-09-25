@@ -1,4 +1,4 @@
-import { Handlers } from "$fresh/server.ts";
+import { Handlers } from "jsr:@fresh/core@^2.1.1/compat";
 
 export const handler: Handlers = {
   POST(_req, _ctx) {
