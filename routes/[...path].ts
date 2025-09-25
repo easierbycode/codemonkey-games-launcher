@@ -194,6 +194,29 @@ export const handler: Handlers = {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
+    // --- Ruffle SWF player ---
+    if (pathname.endsWith(".swf")) {
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <title>Ruffle</title>
+            <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+          </head>
+          <body style="margin:0;padding:0;overflow:hidden;height:100vh;width:100vw;background-color:black;">
+            <div id="container" style="width:100%;height:100%;margin:0;padding:0;display:flex;align-items:center;justify-content:center;">
+              <embed src="${pathname}" style="width:100%;height:100%;" />
+            </div>
+          </body>
+        </html>
+      `;
+      const injectedHtml = injectHtml(html);
+      const data = new TextEncoder().encode(injectedHtml);
+      return new Response(data, { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+
     // --- Static assets from root ---
     if (pathname.startsWith("/static/") || pathname.startsWith("/assets/") || pathname.startsWith("/vendor/")) {
         const filePath = join(ROOT, pathname.substring(1));
