@@ -14,12 +14,13 @@ const RUNTIME_CONFIG = JSON.stringify({
   imports: {
     "preact": "https://esm.sh/preact@10.19.6",
     "preact/": "https://esm.sh/preact@10.19.6/",
-    "@preact/signals": "https://esm.sh/*@preact/signals@1.2.2",
-    "@preact/signals-core": "https://esm.sh/*@preact/signals-core@1.8.0",
+    "@preact/signals": "https://esm.sh/*@preact/signals@2.3.1",
+    "@preact/signals-core": "https://esm.sh/*@preact/signals-core@1.12.1",
+    "@tailwindcss/vite": "npm:@tailwindcss/vite@4.1.13",
     "tailwindcss": "npm:tailwindcss@3.4.1",
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
-    "vite": "npm:vite@^5.3.3",
+    "vite": "npm:vite@5.4.20",
     "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.4"
   },
   compilerOptions: {
