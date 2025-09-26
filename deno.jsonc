@@ -35,6 +35,7 @@
       ]
     }
   },
+  "nodeModulesDir": true,
   "imports": {
     "preact": "https://esm.sh/preact@10.19.6",
     "preact/": "https://esm.sh/preact@10.19.6/",
