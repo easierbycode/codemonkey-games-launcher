@@ -6,9 +6,9 @@
 /// <reference lib="deno.unstable" />
 
 import { App } from "jsr:@fresh/core@^2.1.1";
+import { Webview } from "@webview/webview";
 import manifest from "./fresh.gen.ts";
 import { ROOT } from "./lib/utils.ts";
-import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 const RUNTIME_CONFIG = JSON.stringify({
   imports: {
@@ -88,89 +88,6 @@ async function ensureFreshConfig() {
   }
 }
 
-async function launchKiosk(url: string) {
-  if (Deno.env.get("CMG_DISABLE_KIOSK") === "1") {
-    return;
-  }
-
-  const candidates = [
-    Deno.env.get("CHROME_PATH"),
-    Deno.env.get("BROWSER_PATH"),
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-  ].filter((candidate): candidate is string => Boolean(candidate));
-
-  let browserPath: string | null = null;
-
-  for (const candidate of candidates) {
-    try {
-      const stat = await Deno.stat(candidate);
-      if (stat.isFile) {
-        browserPath = candidate;
-        break;
-      }
-    } catch (_) {
-      // continue searching
-    }
-  }
-
-  if (!browserPath) {
-    console.error("No Chromium-based browser found for kiosk mode. Set CHROME_PATH or BROWSER_PATH.");
-    return;
-  }
-
-  try {
-    const profileHint = Deno.env.get("CMG_KIOSK_PROFILE") ?? "";
-    const args = [
-      "--kiosk",
-      "--start-fullscreen",
-      "--no-first-run",
-      "--disable-session-crashed-bubble",
-      "--disable-infobars",
-      "--autoplay-policy=no-user-gesture-required",
-      `--app=${url}`,
-    ];
-
-    if (profileHint.toLowerCase() === "guest") {
-      args.push("--guest");
-    } else {
-      let profileDir = profileHint;
-      let profileDirectoryArg: string | null = null;
-
-      if (!profileDir) {
-        profileDir = join(ROOT, "chrome-profile");
-        profileDirectoryArg = "Default";
-      }
-
-      try {
-        await Deno.mkdir(profileDir, { recursive: true });
-        args.push(`--user-data-dir=${profileDir}`);
-        if (profileDirectoryArg) {
-          args.push(`--profile-directory=${profileDirectoryArg}`);
-        }
-      } catch (err) {
-        console.error("Failed to prepare kiosk profile directory:", err);
-      }
-    }
-
-    const extraArgs = (Deno.env.get("CMG_KIOSK_EXTRA_ARGS") ?? "")
-      .split(/\s+/)
-      .filter((token) => token.length > 0);
-    args.push(...extraArgs);
-
-    new Deno.Command(browserPath, {
-      args,
-      detached: true,
-      stderr: "null",
-      stdout: "null",
-    }).spawn();
-  } catch (err) {
-    console.error("Failed to launch kiosk browser:", err);
-  }
-}
-
 try {
   Deno.chdir(ROOT);
 } catch (err) {
@@ -183,27 +100,36 @@ await ensureFreshConfig();
 const BASE_PORT = Number(Deno.env.get("PORT") ?? "8000");
 const HOSTNAME = Deno.env.get("HOSTNAME") ?? "127.0.0.1";
 const MAX_PORT_OFFSET = Number(Deno.env.get("PORT_RETRY_LIMIT") ?? "10");
-let kioskLaunched = false;
+let webviewLaunched = false;
 
 for (let offset = 0; offset <= MAX_PORT_OFFSET; offset++) {
   const port = BASE_PORT + offset;
   try {
     const app = new App(manifest);
-    await app.listen({
+    const controller = new AbortController();
+
+    const listenPromise = app.listen({
       port,
       hostname: HOSTNAME,
+      signal: controller.signal,
       onListen: ({ hostname, port }) => {
+        if (webviewLaunched) {
+          return;
+        }
+        webviewLaunched = true;
+
         const host = hostname === "0.0.0.0" ? "localhost" : hostname;
         const url = `http://${host}:${port}/`;
         console.log(`Codemonkey Games Launcher ready at ${url}`);
 
-        if (!kioskLaunched) {
-          kioskLaunched = true;
-          launchKiosk(url);
-        }
+        const webview = new Webview();
+        webview.navigate(url);
+        webview.run();
+        controller.abort();
       },
     });
 
+    await listenPromise;
     break;
   } catch (err) {
     if (err instanceof Deno.errors.AddrInUse) {
@@ -213,6 +139,10 @@ for (let offset = 0; offset <= MAX_PORT_OFFSET; offset++) {
         Deno.exit(1);
       }
       continue;
+    }
+
+    if (err.name === "AbortError") {
+      break;
     }
 
     console.error("Server failed to start:", err);
