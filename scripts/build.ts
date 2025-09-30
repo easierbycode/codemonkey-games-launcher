@@ -1,4 +1,4 @@
-import { build } from "jsr:@fresh/core/build";
+import { build } from "jsr:@fresh/core/dev";
 import manifest from "../fresh.gen.ts";
 import { ROOT } from "../lib/utils.ts";
 
