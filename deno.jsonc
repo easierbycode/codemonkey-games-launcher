@@ -1,8 +1,8 @@
 {
   "tasks": {
     "desktop": "deno run -A --watch=static/,routes/,islands/ desktop.ts",
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "deno run -A npm:vite",
+    "build": "deno run -A npm:vite build",
     "start": "deno run -A main.ts",
     "copy:assets:windows": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force build/windows | Out-Null; Copy-Item -Recurse -Force static build/windows/static; if (Test-Path games) { Copy-Item -Recurse -Force games build/windows/games }\"",
     "build:windows": "deno compile --allow-all --unstable --target x86_64-pc-windows-msvc --output build/windows/codemonkey-games-launcher.exe main.ts && deno task copy:assets:windows",
