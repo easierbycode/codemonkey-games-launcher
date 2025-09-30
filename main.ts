@@ -21,7 +21,8 @@ const RUNTIME_CONFIG = JSON.stringify({
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
     "vite": "npm:vite@5.4.20",
-    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.4"
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.4",
+    "@webview/webview": "jsr:@webview/webview@^0.9.0"
   },
   compilerOptions: {
     jsx: "react-jsx",
