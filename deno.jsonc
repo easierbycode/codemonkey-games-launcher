@@ -1,8 +1,6 @@
 {
   "tasks": {
     "start": "deno run -A --watch=static/,routes/,islands/ main.ts",
-    "dev": "deno run -A npm:vite@5.4.20",
-    "build": "deno run -A --reload npm:vite@5.4.20 build",
     "preview": "deno serve -A _fresh/server.js",
     "copy:assets:windows": "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force build/windows | Out-Null; Copy-Item -Recurse -Force static build/windows/static; if (Test-Path games) { Copy-Item -Recurse -Force games build/windows/games }\"",
     "build:windows": "deno compile --allow-all --unstable --target x86_64-pc-windows-msvc --output build/windows/codemonkey-games-launcher.exe main.ts && deno task copy:assets:windows",
@@ -40,8 +38,6 @@
     "preact/": "https://esm.sh/preact@10.19.6/",
     "@preact/signals": "https://esm.sh/*@preact/signals@2.3.1",
     "@preact/signals-core": "https://esm.sh/*@preact/signals-core@1.12.1",
-    "vite": "npm:vite@5.4.20",
-    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.4",
     "@webview/webview": "jsr:@webview/webview@^0.9.0"
   }
 }
