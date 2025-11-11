@@ -144,7 +144,7 @@ async function main() {
         continue;
       }
 
-      if (err.name === "AbortError") {
+    if (err instanceof Error && err.name === "AbortError") {
         break;
       }
 
