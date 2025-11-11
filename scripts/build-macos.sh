@@ -23,14 +23,7 @@ cp "scripts/Info.plist" "${CONTENTS_DIR}/"
 
 # Compile the Deno application
 echo "Compiling Deno application..."
-deno compile \\
-  --allow-read \\
-  --allow-write \\
-  --allow-env \\
-  --allow-net \\
-  --allow-run \\
-  --output "${MACOS_DIR}/${EXECUTABLE_NAME}" \\
-  desktop.ts
+deno compile --allow-read --allow-write --allow-env --allow-net --allow-run --output "${MACOS_DIR}/${EXECUTABLE_NAME}" desktop.ts
 
 # Make the executable runnable
 chmod +x "${MACOS_DIR}/${EXECUTABLE_NAME}"
