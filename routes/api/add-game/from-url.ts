@@ -1,4 +1,4 @@
-import { Handlers } from "jsr:@fresh/core@^2.1.1/compat";
+import { Handlers } from "$fresh/server.ts";
 import {
   downloadFromUrl,
   extractArchiveToDir,

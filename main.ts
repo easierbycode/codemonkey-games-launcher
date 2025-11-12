@@ -3,20 +3,220 @@
 /// <reference lib="dom.iterable" />
 /// <reference lib="dom.asynciterable" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.unstable" />
 
-import { App } from "jsr:@fresh/core@^2.1.1";
+import { start } from "$fresh/server.ts";
+import manifest from "./fresh.gen.ts";
 import { ROOT } from "./lib/utils.ts";
+import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
-// Change CWD to the project root
+const RUNTIME_CONFIG = JSON.stringify({
+  imports: {
+    "$fresh/": "https://deno.land/x/fresh@1.6.8/",
+    "fresh": "https://deno.land/x/fresh@1.6.8/mod.ts",
+    "preact": "https://esm.sh/preact@10.19.6",
+    "preact/": "https://esm.sh/preact@10.19.6/",
+    "@preact/signals": "https://esm.sh/*@preact/signals@1.2.2",
+    "@preact/signals-core": "https://esm.sh/*@preact/signals-core@1.5.1",
+    "tailwindcss": "npm:tailwindcss@3.4.1",
+    "tailwindcss/": "npm:/tailwindcss@3.4.1/",
+    "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
+    "vite": "npm:vite@^5.3.3",
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^0.1.0"
+  },
+  compilerOptions: {
+    jsx: "react-jsx",
+    jsxImportSource: "preact",
+  },
+}, null, 2);
+
+const CONFIG_FILENAMES = ["deno.json", "deno.jsonc"] as const;
+
+function isConfigPath(path: string | URL): boolean {
+  const value = typeof path === "string"
+    ? path
+    : path instanceof URL
+    ? path.pathname
+    : String(path);
+
+  const lower = value.toLowerCase();
+  return CONFIG_FILENAMES.some((name) =>
+    lower === name || lower.endsWith(`/${name}`) || lower.endsWith(`\\${name}`)
+  );
+}
+
+function installConfigFallbacks() {
+  const originalReadTextFile = Deno.readTextFile.bind(Deno);
+  const originalReadTextFileSync = Deno.readTextFileSync.bind(Deno);
+
+  Deno.readTextFile = async (path: string | URL, options?: Deno.ReadFileOptions): Promise<string> => {
+    if (isConfigPath(path)) {
+      try {
+        return await originalReadTextFile(path, options);
+      } catch (_) {
+        return `${RUNTIME_CONFIG}\n`;
+      }
+    }
+    return await originalReadTextFile(path, options);
+  };
+
+  Deno.readTextFileSync = (path: string | URL): string => {
+    if (isConfigPath(path)) {
+      try {
+        return originalReadTextFileSync(path);
+      } catch (_) {
+        return `${RUNTIME_CONFIG}\n`;
+      }
+    }
+    return originalReadTextFileSync(path);
+  };
+}
+
+async function ensureFreshConfig() {
+  for (const name of CONFIG_FILENAMES) {
+    try {
+      await Deno.stat(name);
+      return;
+    } catch (_) {
+      // keep searching
+    }
+  }
+
+  try {
+    await Deno.writeTextFile("deno.json", `${RUNTIME_CONFIG}\n`);
+  } catch (err) {
+    console.error("Unable to create fallback deno.json:", err);
+  }
+}
+
+async function launchKiosk(url: string) {
+  if (Deno.env.get("CMG_DISABLE_KIOSK") === "1") {
+    return;
+  }
+
+  const candidates = [
+    Deno.env.get("CHROME_PATH"),
+    Deno.env.get("BROWSER_PATH"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  let browserPath: string | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await Deno.stat(candidate);
+      if (stat.isFile) {
+        browserPath = candidate;
+        break;
+      }
+    } catch (_) {
+      // continue searching
+    }
+  }
+
+  if (!browserPath) {
+    console.error("No Chromium-based browser found for kiosk mode. Set CHROME_PATH or BROWSER_PATH.");
+    return;
+  }
+
+  try {
+    const profileHint = Deno.env.get("CMG_KIOSK_PROFILE") ?? "";
+    const args = [
+      "--kiosk",
+      "--start-fullscreen",
+      "--no-first-run",
+      "--disable-session-crashed-bubble",
+      "--disable-infobars",
+      "--autoplay-policy=no-user-gesture-required",
+      `--app=${url}`,
+    ];
+
+    if (profileHint.toLowerCase() === "guest") {
+      args.push("--guest");
+    } else {
+      let profileDir = profileHint;
+      let profileDirectoryArg: string | null = null;
+
+      if (!profileDir) {
+        profileDir = join(ROOT, "chrome-profile");
+        profileDirectoryArg = "Default";
+      }
+
+      try {
+        await Deno.mkdir(profileDir, { recursive: true });
+        args.push(`--user-data-dir=${profileDir}`);
+        if (profileDirectoryArg) {
+          args.push(`--profile-directory=${profileDirectoryArg}`);
+        }
+      } catch (err) {
+        console.error("Failed to prepare kiosk profile directory:", err);
+      }
+    }
+
+    const extraArgs = (Deno.env.get("CMG_KIOSK_EXTRA_ARGS") ?? "")
+      .split(/\s+/)
+      .filter((token) => token.length > 0);
+    args.push(...extraArgs);
+
+    new Deno.Command(browserPath, {
+      args,
+      detached: true,
+      stderr: "null",
+      stdout: "null",
+    }).spawn();
+  } catch (err) {
+    console.error("Failed to launch kiosk browser:", err);
+  }
+}
+
 try {
   Deno.chdir(ROOT);
 } catch (err) {
   console.error("Failed to change working directory to app root:", err);
 }
 
-// In Fresh v2, the manifest is discovered automatically.
-// The Vite plugin will handle the build process.
-const app = new App();
+installConfigFallbacks();
+await ensureFreshConfig();
 
-// The Deno Deploy environment will set the PORT environment variable.
-await app.listen();
+const BASE_PORT = Number(Deno.env.get("PORT") ?? "8000");
+const HOSTNAME = Deno.env.get("HOSTNAME") ?? "127.0.0.1";
+const MAX_PORT_OFFSET = Number(Deno.env.get("PORT_RETRY_LIMIT") ?? "10");
+let kioskLaunched = false;
+
+for (let offset = 0; offset <= MAX_PORT_OFFSET; offset++) {
+  const port = BASE_PORT + offset;
+  try {
+    await start(manifest, {
+      port,
+      hostname: HOSTNAME,
+      onListen: ({ hostname, port }) => {
+        const host = hostname === "0.0.0.0" ? "localhost" : hostname;
+        const url = `http://${host}:${port}/`;
+        console.log(`Codemonkey Games Launcher ready at ${url}`);
+
+        if (!kioskLaunched) {
+          kioskLaunched = true;
+          launchKiosk(url);
+        }
+      },
+    });
+
+    break;
+  } catch (err) {
+    if (err instanceof Deno.errors.AddrInUse) {
+      console.error(`Port ${port} is in use. Trying ${port + 1}...`);
+      if (offset === MAX_PORT_OFFSET) {
+        console.error("Unable to bind any port in range. Exiting.");
+        Deno.exit(1);
+      }
+      continue;
+    }
+
+    console.error("Server failed to start:", err);
+    Deno.exit(1);
+  }
+}

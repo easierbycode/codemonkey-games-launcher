@@ -1,6 +1,10 @@
 import { defineConfig } from "vite";
-import fresh from "jsr:@fresh/plugin-vite@^1.0.4";
+import { fresh } from "@fresh/plugin-vite";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  plugins: [fresh()],
+  plugins: [
+    fresh(),
+    tailwindcss(),
+  ],
 });

@@ -1,6 +1,6 @@
 /** @jsx h */
 import { h } from "preact";
-import { AppProps } from "jsr:@fresh/core@^2.1.1/compat";
+import { AppProps } from "$fresh/server.ts";
 
 export default function App({ Component }: AppProps) {
   return (

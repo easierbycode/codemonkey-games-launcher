@@ -1,4 +1,4 @@
-import { HandlerContext } from "jsr:@fresh/core@^2.1.1/compat";
+import { HandlerContext } from "$fresh/server.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { ROOT } from "../lib/utils.ts";
 

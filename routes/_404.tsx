@@ -1,7 +1,7 @@
 /** @jsx h */
 /** @jsxFrag Fragment */
 import { h, Fragment } from "preact";
-import { Head } from "jsr:@fresh/core@^2.1.1/runtime";
+import { Head } from "$fresh/runtime.ts";
 
 export default function Error404() {
   return (

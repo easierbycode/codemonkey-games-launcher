@@ -1,35 +1,3 @@
-class Player {
-    constructor(game, playerNum) {
-        this.game = game;
-        this.playerNum = playerNum;
-        this.element = this.createElement();
-        this.isShooting = false;
-        this.lastShotTime = 0;
-        this.invulnerable = false;
-    }
-
-    createElement() {
-        const player = document.createElement('div');
-        player.className = 'player';
-        const filter = this.playerNum === 2 ? 'filter: hue-rotate(180deg);' : '';
-        const leftPosition = this.playerNum === 1 ? '100px' : `${this.game.canvas.clientWidth - 140}px`;
-        player.style.cssText = `
-            left: ${leftPosition};
-            top: 300px;
-            width: 40px;
-            height: 50px;
-            background-image: url('ship.png');
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
-            position: absolute;
-            ${filter}
-        `;
-        this.game.canvas.appendChild(player);
-        return player;
-    }
-}
-
 class GameState {
     constructor() {
         this.score = 0;
@@ -329,6 +297,24 @@ class Game {
         this.shootingInterval = 125; // Base shooting interval
     }
 
+    createPlayer() {
+        const player = document.createElement('div');
+        player.className = 'player';
+        player.style.cssText = `
+            left: 100px;
+            top: 300px;
+            width: 40px;
+            height: 50px;
+            background-image: url('ship.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            position: absolute;
+        `;
+        this.canvas.appendChild(player);
+        return player;
+    }
+
     startNewGame() {
         // Clear everything first
         this.clearGame();
@@ -343,10 +329,13 @@ class Game {
         
         // Setup game elements
         this.canvas = document.getElementById('game-canvas');
-        this.players = [new Player(this, 1), new Player(this, 2)];
+        this.player = this.createPlayer();
         this.bullets = [];
         this.enemies = [];
+        this.isShooting = false;
         this.touchPos = null;
+        this.lastShotTime = 0;
+        this.invulnerable = false;
 
         // Setup new event listeners
         this.setupEventListeners();
@@ -521,158 +510,57 @@ class Game {
 
         this.canvas.addEventListener('touchend', (e) => {
             e.preventDefault();
-            this.players.forEach(p => p.isShooting = false);
+            this.isShooting = false;
             this.touchPos = null;
         }, { passive: false });
 
         // Fix keyboard controls with proper boundary calculations
-        this.keys = {};
         window.addEventListener('keydown', (e) => {
-            this.keys[e.key] = true;
-            this.player_inputs.forEach((input, playerIndex) => {
-                if (input.device === 'keyboard') {
-                    if ((input.scheme === 'arrowKeys' && e.key === ' ') || (input.scheme === 'wasd' && e.key === 'Shift')) {
-                        this.players[playerIndex].isShooting = true;
-                    }
-                }
-            });
+            const playerRect = this.player.getBoundingClientRect();
+            const canvasRect = this.canvas.getBoundingClientRect();
+            const speed = 20;
+
+            switch(e.key) {
+                case 'ArrowLeft':
+                    this.player.style.left = `${Math.max(0, playerRect.left - canvasRect.left - speed)}px`;
+                    break;
+                case 'ArrowRight':
+                    this.player.style.left = `${Math.min(canvasRect.width - playerRect.width, playerRect.left - canvasRect.left + speed)}px`;
+                    break;
+                case 'ArrowUp':
+                    this.player.style.top = `${Math.max(0, playerRect.top - canvasRect.top - speed)}px`;
+                    break;
+                case 'ArrowDown':
+                    this.player.style.top = `${Math.min(canvasRect.height - playerRect.height, playerRect.top - canvasRect.top + speed)}px`;
+                    break;
+                case ' ': // Spacebar
+                    this.isShooting = true;
+                    break;
+            }
         });
 
         window.addEventListener('keyup', (e) => {
-            this.keys[e.key] = false;
-            this.player_inputs.forEach((input, playerIndex) => {
-                if (input.device === 'keyboard') {
-                    if ((input.scheme === 'arrowKeys' && e.key === ' ') || (input.scheme === 'wasd' && e.key === 'Shift')) {
-                        this.players[playerIndex].isShooting = false;
-                    }
-                }
-            });
-        });
-
-
-        this.player_inputs = [
-            { device: 'keyboard', scheme: 'arrowKeys' }, // Player 1
-            { device: 'keyboard', scheme: 'wasd' }      // Player 2
-        ];
-        this.gamepad_to_player_map = {};
-
-        window.addEventListener("gamepadconnected", (e) => {
-            console.log("Gamepad connected at index %d: %s. %d buttons, %d axes.",
-                e.gamepad.index, e.gamepad.id,
-                e.gamepad.buttons.length, e.gamepad.axes.length);
-
-            let playerIndex;
-            // If player 1 is on keyboard, assign gamepad to player 2
-            if (this.player_inputs[0].device === 'keyboard' && this.player_inputs[1].device === 'keyboard') {
-                playerIndex = 1;
-            } else {
-                // Otherwise, find first player not controlled by a gamepad
-                playerIndex = this.player_inputs.findIndex(p => p.device === 'keyboard');
+            if (e.key === ' ') { // Spacebar
+                this.isShooting = false;
             }
-
-            if (playerIndex !== -1) {
-                this.player_inputs[playerIndex] = { device: 'gamepad', index: e.gamepad.index };
-                this.gamepad_to_player_map[e.gamepad.index] = playerIndex;
-            }
-        });
-
-        window.addEventListener("gamepaddisconnected", (e) => {
-            console.log("Gamepad disconnected from index %d: %s",
-                e.gamepad.index, e.gamepad.id);
-
-            const playerIndex = this.gamepad_to_player_map[e.gamepad.index];
-            if (playerIndex !== undefined) {
-                // Revert to default keyboard controls
-                this.player_inputs[playerIndex] = { device: 'keyboard', scheme: playerIndex === 0 ? 'arrowKeys' : 'wasd' };
-                delete this.gamepad_to_player_map[e.gamepad.index];
-            }
-        });
-    }
-
-    updatePlayerPositionsFromGamepad() {
-        const gamepads = navigator.getGamepads();
-        if (!gamepads) {
-            return;
-        }
-
-        const speed = 10;
-        const deadzone = 0.25;
-
-        this.player_inputs.forEach((input, playerIndex) => {
-            if (input.device !== 'gamepad') return;
-
-            const gamepad = gamepads[input.index];
-            if (!gamepad) return;
-
-            const player = this.players[playerIndex];
-            if (!player) return;
-
-            const playerRect = player.element.getBoundingClientRect();
-            const canvasRect = this.canvas.getBoundingClientRect();
-            const leftStickX = gamepad.axes[0];
-            const leftStickY = gamepad.axes[1];
-
-            if (Math.abs(leftStickX) > deadzone) {
-                player.element.style.left = `${Math.max(0, Math.min(canvasRect.width - playerRect.width, playerRect.left - canvasRect.left + leftStickX * speed))}px`;
-            }
-            if (Math.abs(leftStickY) > deadzone) {
-                player.element.style.top = `${Math.max(0, Math.min(canvasRect.height - playerRect.height, playerRect.top - canvasRect.top + leftStickY * speed))}px`;
-            }
-
-            player.isShooting = gamepad.buttons[0].pressed;
         });
     }
 
     updatePlayerPosition() {
         if (!this.touchPos) return;
-
+        
         const rect = this.canvas.getBoundingClientRect();
-        const touchX = this.touchPos.x - rect.left;
-
-        const playerIndex = touchX < this.canvas.clientWidth / 2 ? 0 : 1;
-        const player = this.players[playerIndex];
-
-        if (player) {
-            const x = Math.max(0, Math.min(this.touchPos.x - rect.left - 20, this.canvas.clientWidth - 40));
-            const y = Math.max(0, Math.min(this.touchPos.y - rect.top - 25, this.canvas.clientHeight - 50));
-
-            player.element.style.left = `${x}px`;
-            player.element.style.top = `${y}px`;
-        }
+        const x = Math.max(0, Math.min(this.touchPos.x - rect.left - 20, this.canvas.clientWidth - 40));
+        const y = Math.max(0, Math.min(this.touchPos.y - rect.top - 25, this.canvas.clientHeight - 50));
+        
+        this.player.style.left = `${x}px`;
+        this.player.style.top = `${y}px`;
     }
 
-    updatePlayerPositionsFromKeyboard() {
-        const speed = 7;
-        const canvasRect = this.canvas.getBoundingClientRect();
-
-        this.player_inputs.forEach((input, playerIndex) => {
-            if (input.device !== 'keyboard') return;
-
-            const player = this.players[playerIndex];
-            if (!player) return;
-
-            const playerRect = player.element.getBoundingClientRect();
-            const scheme = input.scheme;
-
-            if (scheme === 'arrowKeys') {
-                if (this.keys['ArrowLeft']) { player.element.style.left = `${Math.max(0, playerRect.left - canvasRect.left - speed)}px`; }
-                if (this.keys['ArrowRight']) { player.element.style.left = `${Math.min(canvasRect.width - playerRect.width, playerRect.left - canvasRect.left + speed)}px`; }
-                if (this.keys['ArrowUp']) { player.element.style.top = `${Math.max(0, playerRect.top - canvasRect.top - speed)}px`; }
-                if (this.keys['ArrowDown']) { player.element.style.top = `${Math.min(canvasRect.height - playerRect.height, playerRect.top - canvasRect.top + speed)}px`; }
-            } else if (scheme === 'wasd') {
-                if (this.keys['a']) { player.element.style.left = `${Math.max(0, playerRect.left - canvasRect.left - speed)}px`; }
-                if (this.keys['d']) { player.element.style.left = `${Math.min(canvasRect.width - playerRect.width, playerRect.left - canvasRect.left + speed)}px`; }
-                if (this.keys['w']) { player.element.style.top = `${Math.max(0, playerRect.top - canvasRect.top - speed)}px`; }
-                if (this.keys['s']) { player.element.style.top = `${Math.min(canvasRect.height - playerRect.height, playerRect.top - canvasRect.top + speed)}px`; }
-            }
-        });
-    }
-
-
-    createBullet(player, offsetX = 0) {
+    createBullet(offsetX = 0) {
         const bullet = document.createElement('div');
         bullet.className = 'bullet';
-        const playerRect = player.element.getBoundingClientRect();
+        const playerRect = this.player.getBoundingClientRect();
         const canvasRect = this.canvas.getBoundingClientRect();
     
         const playerCenterX = playerRect.left - canvasRect.left + (playerRect.width / 2);
@@ -779,28 +667,28 @@ class Game {
         requestAnimationFrame(animateParticles);
     }
 
-    playerHit(player) {
-        if (player.invulnerable) return;
-
+    playerHit() {
+        if (this.invulnerable) return;
+        
         // Vibrate if supported (200ms vibration)
         if ('vibrate' in navigator) {
             navigator.vibrate(200);
         }
-
+        
         // Create explosion at player position
-        const playerRect = player.element.getBoundingClientRect();
+        const playerRect = this.player.getBoundingClientRect();
         const canvasRect = this.canvas.getBoundingClientRect();
         this.createPlayerExplosion(
             playerRect.left - canvasRect.left + playerRect.width / 2,
             playerRect.top - canvasRect.top + playerRect.height / 2
         );
-
+        
         // Shake screen
         this.shakeScreen();
-
-        player.invulnerable = true;
-        player.element.style.visibility = 'hidden';
-
+        
+        this.invulnerable = true;
+        this.player.style.visibility = 'hidden';
+        
         const isGameOver = this.gameState.loseLife();
         if (isGameOver) {
             // Simply reload the page instead of showing title screen
@@ -810,24 +698,24 @@ class Game {
 
         // Show player after short delay
         setTimeout(() => {
-            player.element.style.visibility = 'visible';
-
+            this.player.style.visibility = 'visible';
+            
             // Start flashing
             let flashCount = 0;
             const flashInterval = setInterval(() => {
-                player.element.style.visibility = player.element.style.visibility === 'hidden' ? 'visible' : 'hidden';
+                this.player.style.visibility = this.player.style.visibility === 'hidden' ? 'visible' : 'hidden';
                 flashCount++;
                 if (flashCount >= 10) { // 5 full flashes (10 toggles)
                     clearInterval(flashInterval);
-                    player.element.style.visibility = 'visible';
+                    this.player.style.visibility = 'visible';
                 }
             }, 250); // Flash every 250ms
-
+            
             // End invulnerability after 2.5 seconds
             setTimeout(() => {
-                player.invulnerable = false;
+                this.invulnerable = false;
                 clearInterval(flashInterval);
-                player.element.style.visibility = 'visible';
+                this.player.style.visibility = 'visible';
             }, 2500);
         }, 500); // Show player after 500ms
     }
@@ -949,35 +837,31 @@ class Game {
 
     startGameLoop() {
         this.enemyBullets = [];
-
+    
         this.gameLoop = setInterval(() => {
             this.updatePlayerPosition();
-            this.updatePlayerPositionsFromKeyboard();
-            this.updatePlayerPositionsFromGamepad();
-
+    
             // Update companion ship movement
             this.updateCompanionShip();
-
+    
             // Player shooting logic
-            this.players.forEach(player => {
-                if (player.isShooting && Date.now() - player.lastShotTime > this.shootingInterval) {
-                    this.shoot(player);
-                    player.lastShotTime = Date.now();
-                }
-            });
-
+            if (this.isShooting && Date.now() - this.lastShotTime > this.shootingInterval) {
+                this.shoot();
+                this.lastShotTime = Date.now();
+            }
+    
             // Update player bullets
             this.bullets.forEach((bullet, bulletIndex) => {
                 const currentTop = parseFloat(bullet.style.top);
                 bullet.style.top = `${currentTop - 10}px`; // Move bullet upward
-
+    
                 // Remove bullets that go off-screen
                 if (currentTop < -10) {
                     bullet.remove();
                     this.bullets.splice(bulletIndex, 1);
                     return;
                 }
-
+    
                 // Check for collisions with enemies
                 this.enemies.forEach((enemy, enemyIndex) => {
                     if (this.checkCollision(bullet, enemy)) {
@@ -988,17 +872,17 @@ class Game {
                             enemyRect.left - canvasRect.left + enemyRect.width / 2,
                             enemyRect.top - canvasRect.top + enemyRect.height / 2
                         );
-
+    
                         // Remove bullet and enemy
                         bullet.remove();
                         this.bullets.splice(bulletIndex, 1);
                         enemy.remove();
                         this.enemies.splice(enemyIndex, 1);
-
+    
                         // Add score
                         this.gameState.addScore(100);
                         this.gameState.killsInLevel++;
-
+    
                         // Randomly spawn a power-up
                         if (Math.random() < 0.2) { // 20% chance to spawn a power-up
                             this.spawnPowerUp(
@@ -1006,11 +890,11 @@ class Game {
                                 enemyRect.top - canvasRect.top
                             );
                         }
-
+    
                         return; // Exit loop for this enemy
                     }
                 });
-
+    
                 // Check for collisions with the boss
                 if (this.boss && this.gameState.isBossFight) {
                     if (this.checkCollision(bullet, this.boss)) {
@@ -1020,32 +904,32 @@ class Game {
                             bossRect.left - canvasRect.left + Math.random() * bossRect.width,
                             bossRect.top - canvasRect.top + Math.random() * bossRect.height
                         );
-
+    
                         bullet.remove();
                         this.bullets.splice(bulletIndex, 1);
-
+    
                         // Damage the boss
                         this.gameState.bossHealth -= 1;
                         this.bossHealthBar.style.width = `${(this.gameState.bossHealth / this.gameState.maxBossHealth) * 100}%`;
-
+    
                         // Check if boss is defeated
                         if (this.gameState.bossHealth <= 0) {
                             this.defeatBoss();
                         }
-
+    
                         return; // Exit loop for this bullet
                     }
                 }
             });
-
+    
             // Update enemy bullets
             this.enemyBullets.forEach((bullet, bulletIndex) => {
                 const currentLeft = parseFloat(bullet.element.style.left);
                 const currentTop = parseFloat(bullet.element.style.top);
-
+    
                 bullet.element.style.left = `${currentLeft + bullet.velocity.x}px`;
                 bullet.element.style.top = `${currentTop + bullet.velocity.y}px`; // Move bullet in its velocity direction
-
+    
                 // Remove bullets that are off-screen
                 if (
                     currentTop > this.canvas.clientHeight ||
@@ -1057,39 +941,38 @@ class Game {
                     this.enemyBullets.splice(bulletIndex, 1);
                     return;
                 }
+    
             });
-
+    
             // Update power-ups
             this.powerUps.forEach((powerUp, powerUpIndex) => {
                 const currentTop = parseFloat(powerUp.element.style.top);
-
+    
                 // Move power-up downward
                 powerUp.element.style.top = `${currentTop + 2}px`;
-
+    
                 // Remove power-ups that go off-screen
                 if (currentTop > this.canvas.clientHeight + 20) {
                     powerUp.element.remove();
                     this.powerUps.splice(powerUpIndex, 1);
                     return;
                 }
-
+    
                 // Check collision with player
-                this.players.forEach(player => {
-                    if (this.checkCollision(player.element, powerUp.element)) {
-                        this.handlePowerUpCollection(powerUp);
-                        powerUp.element.remove();
-                        this.powerUps.splice(powerUpIndex, 1);
-                    }
-                });
+                if (this.checkCollision(this.player, powerUp.element)) {
+                    this.handlePowerUpCollection(powerUp);
+                    powerUp.element.remove();
+                    this.powerUps.splice(powerUpIndex, 1);
+                }
             });
-
+    
             // Boss shooting logic
             if (this.boss && this.gameState.isBossFight) {
                 if (Math.random() < 0.02) {
                     this.createBossBullet();
                 }
             }
-
+    
             // Update enemies
             if (!this.gameState.isBossFight && Math.random() < 0.03) {
                 if (Math.random() < 0.3) {
@@ -1098,17 +981,17 @@ class Game {
                     this.enemies.push(this.createEnemy());
                 }
             }
-
+    
             this.enemies.forEach((enemy, enemyIndex) => {
                 const currentLeft = parseInt(enemy.style.left);
                 const currentTop = parseInt(enemy.style.top);
                 const isShooter = enemy.className === 'shooter-enemy';
-
+    
                 if (isShooter) {
                     const direction = parseInt(enemy.dataset.direction) || 1;
                     const speed = 3 * this.gameState.difficulty;
                     enemy.style.left = `${currentLeft + direction * speed}px`;
-
+    
                     if (!enemy.dataset.hasFired || enemy.dataset.hasFired === 'false') {
                         if (Math.random() < 0.01) {
                             this.createEnemyProjectile(enemy);
@@ -1116,32 +999,31 @@ class Game {
                             setTimeout(() => (enemy.dataset.hasFired = 'false'), 2000); // Cooldown
                         }
                     }
-
+    
                     if (currentLeft < -30 || currentLeft > this.canvas.clientWidth + 30) {
                         enemy.remove();
                         this.enemies.splice(enemyIndex, 1);
                     }
                 } else {
                     enemy.style.top = `${currentTop + 2 * this.gameState.difficulty}px`;
-
+    
                     if (currentTop > this.canvas.clientHeight + 30) {
                         enemy.remove();
                         this.enemies.splice(enemyIndex, 1);
                     }
                 }
 
-                this.players.forEach(player => {
-                    if (this.checkCollision(player.element, enemy)) {
-                        this.playerHit(player);
-                        enemy.remove();
-                        this.enemies.splice(enemyIndex, 1);
-                    }
-                });
+                if (this.checkCollision(this.player, enemy)) {
+                    this.playerHit();
+                    enemy.remove();
+                    this.enemies.splice(enemyIndex, 1);
+                }
             });
+    
 
-            // Update boss position
-            this.updateBoss();
-        }, 1000 / 60);
+                // Update boss position
+                this.updateBoss();
+            }, 1000 / 60);
     
             
     
@@ -1610,13 +1492,11 @@ class Game {
     
     updateBoss() {
         if (!this.boss || !this.gameState.isBossFight) return;
-
-        this.players.forEach(player => {
-            if (this.checkCollision(player.element, this.boss)) {
-                this.playerHit(player);
-            }
-        });
-
+        
+        if (this.checkCollision(this.player, this.boss)) {
+            this.playerHit();
+        }
+    
         const currentTime = Date.now();
         if (currentTime - this.lastBossUpdateTime < this.bossUpdateInterval) {
             return;
@@ -1640,8 +1520,7 @@ class Game {
 
     createBossBullet() {
         const bossRect = this.boss.getBoundingClientRect();
-        const targetPlayer = this.players[Math.floor(Math.random() * this.players.length)];
-        const playerRect = targetPlayer.element.getBoundingClientRect();
+        const playerRect = this.player.getBoundingClientRect();
         const canvasRect = this.canvas.getBoundingClientRect();
     
         // Calculate the angle from the boss to the player
@@ -1765,17 +1644,17 @@ class Game {
     
     
 
-    shoot(player) {
+    shoot() {
         // Player bullets
         if (this.doubleBullets) {
-            this.bullets.push(this.createBullet(player, -10)); // Left bullet
-            this.bullets.push(this.createBullet(player, 10));  // Right bullet
+            this.bullets.push(this.createBullet(-10)); // Left bullet
+            this.bullets.push(this.createBullet(10));  // Right bullet
         } else {
-            this.bullets.push(this.createBullet(player, 0));   // Single bullet
+            this.bullets.push(this.createBullet(0));   // Single bullet
         }
     
         // Companion bullets
-        if (this.companionShip && player.playerNum === 1) { // Companion only for P1 for now
+        if (this.companionShip) {
             const companionRect = this.companionShip.getBoundingClientRect();
             const canvasRect = this.canvas.getBoundingClientRect();
             const companionCenterX = companionRect.left - canvasRect.left + companionRect.width / 2;

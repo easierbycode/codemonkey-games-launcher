@@ -1,6 +1,6 @@
-import { HandlerContext, Handlers } from "jsr:@fresh/core@^2.1.1/compat";
+import { HandlerContext, Handlers } from "$fresh/server.ts";
 import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
-import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { extname, join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { GAMES_DIR, ROOT } from "../lib/utils.ts";
 
 const injections = {
@@ -155,7 +155,8 @@ function injectHtml(html: string): string {
 async function serveFile(filePath: string, isIndex: boolean): Promise<Response> {
   try {
     let data = await Deno.readFile(filePath);
-    let ct = contentType(filePath) ?? "application/octet-stream";
+    const ext = extname(filePath);
+    let ct = contentType(ext) ?? "application/octet-stream";
 
     if (ct === "application/octet-stream") {
       const lower = filePath.toLowerCase();
@@ -193,29 +194,6 @@ export const handler: Handlers = {
   async GET(req: Request, _ctx: HandlerContext) {
     const url = new URL(req.url);
     const pathname = url.pathname;
-
-    // --- Ruffle SWF player ---
-    if (pathname.endsWith(".swf")) {
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-            <title>Ruffle</title>
-            <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
-          </head>
-          <body style="margin:0;padding:0;overflow:hidden;height:100vh;width:100vw;background-color:black;">
-            <div id="container" style="width:100%;height:100%;margin:0;padding:0;display:flex;align-items:center;justify-content:center;">
-              <embed src="${pathname}" style="width:100%;height:100%;" />
-            </div>
-          </body>
-        </html>
-      `;
-      const injectedHtml = injectHtml(html);
-      const data = new TextEncoder().encode(injectedHtml);
-      return new Response(data, { headers: { "content-type": "text/html; charset=utf-8" } });
-    }
 
     // --- Static assets from root ---
     if (pathname.startsWith("/static/") || pathname.startsWith("/assets/") || pathname.startsWith("/vendor/")) {
