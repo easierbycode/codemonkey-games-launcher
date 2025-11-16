@@ -105,7 +105,15 @@ export async function extractArchiveToDir(
   const name = archiveName.toLowerCase();
   let extracted = false;
   const extractRoot = await Deno.makeTempDir();
-  const tmpArchive = await Deno.makeTempFile();
+  const archiveSuffix = name.endsWith(".zip")
+    ? ".zip"
+    : name.endsWith(".dmg")
+    ? ".dmg"
+    : name.endsWith(".pkg")
+    ? ".pkg"
+    : "";
+  // Some OS tools (e.g. Windows Expand-Archive) require the file extension to match the archive format.
+  const tmpArchive = await Deno.makeTempFile({ suffix: archiveSuffix });
   await Deno.writeFile(tmpArchive, archiveBytes);
 
   if (Deno.build.os === "darwin") {
