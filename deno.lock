@@ -1206,7 +1206,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@fresh/plugin-vite@0.1",
+      "jsr:@fresh/plugin-vite@^1.0.7",
       "npm:tailwindcss@3.4.1",
       "npm:vite@^5.3.3"
     ]

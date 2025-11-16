@@ -45,6 +45,6 @@
     "tailwindcss/": "npm:/tailwindcss@3.4.1/",
     "tailwindcss/plugin": "npm:/tailwindcss@3.4.1/plugin.js",
     "vite": "npm:vite@^5.3.3",
-    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^0.1.0"
+    "@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1.0.7"
   }
 }
