@@ -563,6 +563,11 @@ Object.defineProperty(window, 'games', {
   get: () => games,
   set: (value) => { games = value; }
 });
+Object.defineProperty(window, 'currentGame', {
+  get: () => currentGame,
+  set: () => { /* ignore external mutation attempts */ }
+});
+window.getCurrentGame = () => currentGame;
 
 // Attach Shift+ArrowDown handler inside iframe (same-origin games)
 function bindIframeKeys() {

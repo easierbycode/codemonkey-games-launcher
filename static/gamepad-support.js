@@ -1815,7 +1815,12 @@ class GamepadManager {
     if (!controllerId) return;
     const mapping = this.controllerMappings[controllerId];
     if (mapping) {
-      localStorage.setItem(`gamepadMapping_${controllerId}`, JSON.stringify(mapping));
+      try {
+        localStorage.setItem(`gamepadMapping_${controllerId}`, JSON.stringify(mapping));
+      } catch (e) {
+        console.warn('Unable to persist controller mapping to localStorage', e);
+      }
+      this.persistMappingForCurrentGame(controllerId, mapping);
     }
   }
   
@@ -1859,6 +1864,38 @@ class GamepadManager {
       }
     } catch (_) { /* ignore migration errors */ }
     return mapping;
+  }
+
+  getActiveLauncherGame() {
+    try {
+      if (typeof window !== 'undefined') {
+        if (typeof window.getCurrentGame === 'function') {
+          return window.getCurrentGame();
+        }
+        if ('currentGame' in window) {
+          return window.currentGame;
+        }
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
+  async persistMappingForCurrentGame(controllerId, mapping) {
+    console.log({controllerId, mapping});
+    const game = this.getActiveLauncherGame();
+    if (!game || !game.id || !mapping) return;
+    try {
+      const res = await fetch(`/api/games/${encodeURIComponent(game.id)}/recommended-buttons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ controllerId, gamepadMapping: mapping }),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.warn('Failed to sync controller layout to codemonkey.json', err);
+    }
   }
 }
 

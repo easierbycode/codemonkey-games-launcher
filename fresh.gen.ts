@@ -12,8 +12,9 @@ import * as $6 from "./routes/api/games.ts";
 import * as $7 from "./routes/api/games/[id]/index.ts";
 import * as $8 from "./routes/api/games/[id]/thumbnail.ts";
 import * as $9 from "./routes/api/games/[id]/update.ts";
-import * as $10 from "./routes/api/heartbeat.ts";
-import * as $11 from "./routes/index.ts";
+import * as $10 from "./routes/api/games/[id]/recommended-buttons.ts";
+import * as $11 from "./routes/api/heartbeat.ts";
+import * as $12 from "./routes/index.ts";
 
 const manifest = {
   routes: {
@@ -27,8 +28,9 @@ const manifest = {
     "./routes/api/games/[id]/index.ts": $7,
     "./routes/api/games/[id]/thumbnail.ts": $8,
     "./routes/api/games/[id]/update.ts": $9,
-    "./routes/api/heartbeat.ts": $10,
-    "./routes/index.ts": $11,
+    "./routes/api/games/[id]/recommended-buttons.ts": $10,
+    "./routes/api/heartbeat.ts": $11,
+    "./routes/index.ts": $12,
   },
   islands: {},
   baseUrl: import.meta.url,

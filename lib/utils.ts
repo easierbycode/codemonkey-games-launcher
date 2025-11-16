@@ -29,6 +29,15 @@ export type RecommendedButton = {
   elementId: string;
 };
 
+export type GamepadButtonMapping = {
+  keyboardKey?: string;
+  keyCode?: number;
+  gamepadButton?: number;
+};
+
+// Groups (dpad, face, shoulder, special, etc.) -> button name -> mapping details
+export type GamepadMapping = Record<string, Record<string, GamepadButtonMapping>>;
+
 export type GameEntry = {
   id: string;
   name: string;
@@ -36,7 +45,7 @@ export type GameEntry = {
   urlPath: string;
   hasThumbnail: boolean;
   sourceInfo?: SourceInfo;
-  recommendedButtons?: RecommendedButton[];
+  recommendedButtons?: RecommendedButton[] | GamepadMapping;
 };
 
 const DEFAULT_CONFIGS: Record<string, { recommendedButtons: RecommendedButton[] }> = {
