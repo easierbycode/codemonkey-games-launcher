@@ -1390,7 +1390,25 @@ class GamepadManager {
     buttonNameSpan.textContent = `${group.toUpperCase()} ${button.toUpperCase()}`;
     
     // Populate current values
-    const currentMapping = this.currentMapping[group][button];
+    let mapping = this.controllerMappings[controllerId];
+    if (!mapping) {
+      mapping = this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(this.defaultMapping));
+    }
+
+    if (!mapping[group]) {
+      mapping[group] = JSON.parse(JSON.stringify(this.defaultMapping[group] || {}));
+    }
+
+    if (!mapping[group][button] && this.defaultMapping[group]?.[button]) {
+      mapping[group][button] = { ...this.defaultMapping[group][button] };
+    }
+
+    const currentMapping = mapping[group]?.[button];
+    if (!currentMapping) {
+      console.warn(`No mapping found for ${group}.${button}; using defaults.`);
+      return;
+    }
+
     document.querySelector('#keyboard-key-input').value = currentMapping.keyboardKey;
     document.querySelector('#gamepad-button-select').value = currentMapping.gamepadButton;
     
