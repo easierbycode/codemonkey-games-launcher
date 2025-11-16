@@ -1,12 +1,31 @@
 import { Handlers } from "$fresh/server.ts";
-import { GAMES_DIR, GamepadMapping } from "../../../../lib/utils.ts";
+import { GAMES_DIR, GamepadMapping, GamepadUseWASDMap } from "../../../../lib/utils.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 type Metadata = {
   sourceInfo?: unknown;
-  recommendedButtons?: GamepadMapping;
+  recommendedButtons?: RecommendedButtonsContainer;
   [key: string]: unknown;
 };
+
+type RecommendedButtonsContainer = {
+  mapping: GamepadMapping;
+  useWASD?: GamepadUseWASDMap;
+};
+
+type Payload = {
+  controllerId?: string;
+  gamepadMapping?: GamepadMapping;
+  gamepadUseWASD?: boolean;
+};
+
+function getExistingContainer(value: unknown): RecommendedButtonsContainer | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (!("mapping" in value)) return null;
+  const container = value as RecommendedButtonsContainer;
+  if (!container.mapping) return null;
+  return container;
+}
 
 export const handler: Handlers = {
   async POST(req, ctx) {
@@ -22,7 +41,7 @@ export const handler: Handlers = {
         return new Response("Game not found", { status: 404 });
       }
 
-      let payload: { gamepadMapping?: GamepadMapping } | null = null;
+      let payload: Payload | null = null;
       try {
         payload = await req.json();
       } catch {
@@ -42,7 +61,17 @@ export const handler: Handlers = {
         metadata = {};
       }
 
-      metadata.recommendedButtons = payload.gamepadMapping;
+      const controllerId = String(payload.controllerId || "default");
+      const existingContainer = getExistingContainer(metadata.recommendedButtons);
+      const useWASD: GamepadUseWASDMap = { ...(existingContainer?.useWASD ?? {}) };
+      if (payload.gamepadUseWASD !== undefined) {
+        useWASD[controllerId] = payload.gamepadUseWASD;
+      }
+
+      metadata.recommendedButtons = {
+        mapping: payload.gamepadMapping,
+        ...(Object.keys(useWASD).length ? { useWASD } : {}),
+      };
 
       await Deno.writeTextFile(metadataPath, JSON.stringify(metadata, null, 2));
       return Response.json({ ok: true });

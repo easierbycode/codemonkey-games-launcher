@@ -35,8 +35,17 @@ export type GamepadButtonMapping = {
   gamepadButton?: number;
 };
 
+export type GamepadUseWASDMap = Record<string, boolean>;
+
 // Groups (dpad, face, shoulder, special, etc.) -> button name -> mapping details
 export type GamepadMapping = Record<string, Record<string, GamepadButtonMapping>>;
+
+export type RecommendedButtonsMetadata =
+  | RecommendedButton[]
+  | {
+      mapping: GamepadMapping;
+      useWASD?: GamepadUseWASDMap;
+    };
 
 export type GameEntry = {
   id: string;
@@ -45,7 +54,7 @@ export type GameEntry = {
   urlPath: string;
   hasThumbnail: boolean;
   sourceInfo?: SourceInfo;
-  recommendedButtons?: RecommendedButton[] | GamepadMapping;
+  recommendedButtons?: RecommendedButtonsMetadata;
 };
 
 const DEFAULT_CONFIGS: Record<string, { recommendedButtons: RecommendedButton[] }> = {

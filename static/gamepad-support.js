@@ -1769,6 +1769,9 @@ class GamepadManager {
     if (!controllerId) return;
     this.controllerUseWASD[controllerId] = !!enabled;
     try { localStorage.setItem(`gamepadUseWASD_${controllerId}`, enabled ? '1' : '0'); } catch (_) {}
+    if (controllerId !== 'all') {
+      this.persistMappingForCurrentGame(controllerId);
+    }
   }
 
   loadUseWASDPreference(controllerId) {
@@ -1820,7 +1823,7 @@ class GamepadManager {
       } catch (e) {
         console.warn('Unable to persist controller mapping to localStorage', e);
       }
-      this.persistMappingForCurrentGame(controllerId, mapping);
+      this.persistMappingForCurrentGame(controllerId);
     }
   }
   
@@ -1880,15 +1883,21 @@ class GamepadManager {
     return null;
   }
 
-  async persistMappingForCurrentGame(controllerId, mapping) {
-    console.log({controllerId, mapping});
+  async persistMappingForCurrentGame(controllerId) {
+    if (!controllerId) return;
     const game = this.getActiveLauncherGame();
+    const mapping = this.controllerMappings[controllerId];
     if (!game || !game.id || !mapping) return;
+    const useWASD = this.controllerUseWASD[controllerId];
     try {
       const res = await fetch(`/api/games/${encodeURIComponent(game.id)}/recommended-buttons`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ controllerId, gamepadMapping: mapping }),
+        body: JSON.stringify({
+          controllerId,
+          gamepadMapping: mapping,
+          gamepadUseWASD: typeof useWASD === 'boolean' ? useWASD : undefined,
+        }),
       });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
