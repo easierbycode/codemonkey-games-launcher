@@ -240,13 +240,13 @@ class GamepadManager {
       this.processButtonGroup('face', controller, controllerIndex, prevButtonState, mapping, useWASD);
       this.processButtonGroup('shoulder', controller, controllerIndex, prevButtonState, mapping, useWASD);
       this.processButtonGroup('special', controller, controllerIndex, prevButtonState, mapping, useWASD);
-      
+
       // Process analog sticks
       this.processAnalogSticks(controller, controllerIndex, mapping);
-      
+
       // Handle launcher-specific controls
       this.processLauncherControls(controller, controllerIndex, prevButtonState, mapping);
-      
+
       // Handle OSD controls
       this.processOSDControls(controller, controllerIndex, prevButtonState, mapping);
       // Handle Game Menu controls
@@ -292,10 +292,7 @@ class GamepadManager {
           }
           // While overlays are open, don't forward most groups to the game
           else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
-            // Latch A/B so releasing after closing overlay won't trigger launcher actions
-            if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = true;
-            if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = true;
-            // Overlay-specific handling handled elsewhere
+            // Overlay-specific handling handled elsewhere - don't process here
           } else {
             const eff = this.getEffectiveMappingForLayout(groupName, buttonName, buttonMapping, useWASD);
             this.dispatchKeyboardEvent('keydown', eff);
@@ -307,8 +304,7 @@ class GamepadManager {
           if (swallow) {
             // swallow
           } else if (this.isAnyOverlayOpen && this.isAnyOverlayOpen() && (groupName === 'dpad' || groupName === 'face' || groupName === 'shoulder')) {
-            if (groupName === 'face' && buttonName === 'btnBottom') this.buttonState[controllerIndex].faceSouth = false;
-            if (groupName === 'face' && buttonName === 'btnRight') this.buttonState[controllerIndex].faceEast = false;
+            // Overlay-specific handling handled elsewhere - don't process here
           } else {
             const eff = this.getEffectiveMappingForLayout(groupName, buttonName, buttonMapping, useWASD);
             this.dispatchKeyboardEvent('keyup', eff);
