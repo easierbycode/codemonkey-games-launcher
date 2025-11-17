@@ -22,7 +22,15 @@ export const handler: Handlers = {
 
       const sourceInfo: SourceInfo = { source: "github", repo, branch: branch || "main", subdir: subdir || "root" };
       const metadataPath = join(target, "codemonkey.json");
-      await Deno.writeTextFile(metadataPath, JSON.stringify(sourceInfo, null, 2));
+      let metadata: Record<string, unknown> = {};
+      try {
+        const existing = await Deno.readTextFile(metadataPath);
+        metadata = JSON.parse(existing);
+      } catch {
+        metadata = {};
+      }
+      metadata.sourceInfo = sourceInfo;
+      await Deno.writeTextFile(metadataPath, JSON.stringify(metadata, null, 2));
 
       return Response.json({ ok: true, id });
     } catch (e) {
