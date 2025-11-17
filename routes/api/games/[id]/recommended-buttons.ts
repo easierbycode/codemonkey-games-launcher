@@ -1,16 +1,16 @@
 import { Handlers } from "$fresh/server.ts";
-import { GAMES_DIR, GamepadMapping, GamepadUseWASDMap } from "../../../../lib/utils.ts";
+import {
+  GAMES_DIR,
+  GamepadMapping,
+  GamepadUseWASDMap,
+  RecommendedButtonsContainer,
+} from "../../../../lib/utils.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 type Metadata = {
   sourceInfo?: unknown;
   recommendedButtons?: RecommendedButtonsContainer;
   [key: string]: unknown;
-};
-
-type RecommendedButtonsContainer = {
-  mapping: GamepadMapping;
-  useWASD?: GamepadUseWASDMap;
 };
 
 type Payload = {
@@ -62,16 +62,23 @@ export const handler: Handlers = {
       }
 
       const controllerId = String(payload.controllerId || "default");
-      const existingContainer = getExistingContainer(metadata.recommendedButtons);
+      const previousValue = metadata.recommendedButtons;
+      const existingContainer = getExistingContainer(previousValue);
       const useWASD: GamepadUseWASDMap = { ...(existingContainer?.useWASD ?? {}) };
+      const legacyButtons = Array.isArray(previousValue) ? previousValue : undefined;
+      const buttons = Array.isArray(existingContainer?.buttons)
+        ? existingContainer.buttons
+        : legacyButtons;
       if (payload.gamepadUseWASD !== undefined) {
         useWASD[controllerId] = payload.gamepadUseWASD;
       }
 
-      metadata.recommendedButtons = {
+      const container: RecommendedButtonsContainer = {
         mapping: payload.gamepadMapping,
-        ...(Object.keys(useWASD).length ? { useWASD } : {}),
       };
+      if (Object.keys(useWASD).length) container.useWASD = useWASD;
+      if (buttons && buttons.length) container.buttons = buttons;
+      metadata.recommendedButtons = container;
 
       await Deno.writeTextFile(metadataPath, JSON.stringify(metadata, null, 2));
       return Response.json({ ok: true });

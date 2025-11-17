@@ -32,6 +32,23 @@ let games = [];
 let focusedIndex = 0;
 let currentGame = null;
 
+function getRecommendedButtonList(recommended) {
+  if (!recommended) return [];
+  if (Array.isArray(recommended)) return recommended;
+  if (Array.isArray(recommended.buttons)) return recommended.buttons;
+  return [];
+}
+
+function notifyGamepadManagerOfGameChange(game) {
+  try {
+    if (window.gamepadManager && typeof window.gamepadManager.onLauncherGameChanged === 'function') {
+      window.gamepadManager.onLauncherGameChanged(game || null);
+    }
+  } catch (err) {
+    console.warn('Failed to notify gamepad system of game change', err);
+  }
+}
+
 function el(tag, className, text) {
   const e = document.createElement(tag);
   if (className) e.className = className;
@@ -140,6 +157,7 @@ function openGame(game) {
   document.body.classList.add('playing');
   document.documentElement.classList.add('playing');
   currentGame = game;
+  notifyGamepadManagerOfGameChange(game);
   // Update exit button text with current game name
   exitGameBtn.textContent = `Exit ${game.name}`;
   // Fullscreen the root so OSD (sibling overlay) remains visible in fullscreen
@@ -159,6 +177,7 @@ function exitGame() {
   document.body.classList.remove('playing');
   document.documentElement.classList.remove('playing');
   currentGame = null;
+  notifyGamepadManagerOfGameChange(null);
   // Reset exit button text
   exitGameBtn.textContent = 'Exit game';
   const d = document;
@@ -221,8 +240,9 @@ function toggleOSD(show) {
   if (!global) {
     // Render recommended buttons
     recommendedButtonsEl.innerHTML = '';
-    if (currentGame?.recommendedButtons?.length) {
-      for (const btn of currentGame.recommendedButtons) {
+    const recommended = getRecommendedButtonList(currentGame?.recommendedButtons);
+    if (recommended.length) {
+      for (const btn of recommended) {
         const buttonEl = el('button', '', btn.label);
         buttonEl.addEventListener('click', () => {
           // Game developers: To handle recommended button actions,

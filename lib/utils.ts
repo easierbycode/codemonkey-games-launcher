@@ -40,12 +40,15 @@ export type GamepadUseWASDMap = Record<string, boolean>;
 // Groups (dpad, face, shoulder, special, etc.) -> button name -> mapping details
 export type GamepadMapping = Record<string, Record<string, GamepadButtonMapping>>;
 
+export type RecommendedButtonsContainer = {
+  mapping: GamepadMapping;
+  useWASD?: GamepadUseWASDMap;
+  buttons?: RecommendedButton[];
+};
+
 export type RecommendedButtonsMetadata =
   | RecommendedButton[]
-  | {
-      mapping: GamepadMapping;
-      useWASD?: GamepadUseWASDMap;
-    };
+  | RecommendedButtonsContainer;
 
 export type GameEntry = {
   id: string;

@@ -57,6 +57,8 @@ class GamepadManager {
     // Load saved mapping or use default
     this.controllerMappings = {}; // Maps controller ID to mapping object
     this.controllerUseWASD = {}; // Maps controller ID to boolean
+    this.cachedRecommendation = null;
+    this.cachedRecommendationGameId = null;
 
     // Start button preferences
     this.simulateTouchOnStart = this.loadStartTouchPreference();
@@ -1778,8 +1780,13 @@ class GamepadManager {
     if (!controllerId) return false;
     try {
       const v = localStorage.getItem(`gamepadUseWASD_${controllerId}`);
-      return v === '1' || v === 'true';
-    } catch (_) { return false; }
+      if (v !== null) {
+        return v === '1' || v === 'true';
+      }
+    } catch (_) { /* ignore */ }
+    const recommended = this.getRecommendedUseWASD(controllerId);
+    if (typeof recommended === 'boolean') return recommended;
+    return false;
   }
 
   // ===== Preferences (Start actions) =====
@@ -1829,28 +1836,51 @@ class GamepadManager {
   
   loadMapping(controllerId) {
     if (!controllerId) return JSON.parse(JSON.stringify(this.defaultMapping));
-    const saved = localStorage.getItem(`gamepadMapping_${controllerId}`);
+    let saved = null;
+    try {
+      saved = localStorage.getItem(`gamepadMapping_${controllerId}`);
+    } catch (_) {
+      saved = null;
+    }
 
     // For seamless migration, check for old global mapping if no specific one is found.
     // This will effectively copy the old setting to the first controller that connects.
     let mappingToParse = saved;
     if (!mappingToParse) {
-      const oldGlobal = localStorage.getItem('gamepadMapping');
-      if (oldGlobal) {
-        mappingToParse = oldGlobal;
-        // To prevent all controllers from getting this, we should remove it.
-        // This migration will only happen once per user.
-        localStorage.removeItem('gamepadMapping');
-        // Also migrate the old WASD setting
-        const oldWASD = localStorage.getItem('gamepadUseWASD');
-        if (oldWASD) {
-          this.setUseWASDForDpad(controllerId, oldWASD === '1' || oldWASD === 'true');
-          localStorage.removeItem('gamepadUseWASD');
+      try {
+        const oldGlobal = localStorage.getItem('gamepadMapping');
+        if (oldGlobal) {
+          mappingToParse = oldGlobal;
+          // To prevent all controllers from getting this, we should remove it.
+          // This migration will only happen once per user.
+          localStorage.removeItem('gamepadMapping');
+          // Also migrate the old WASD setting
+          const oldWASD = localStorage.getItem('gamepadUseWASD');
+          if (oldWASD) {
+            this.setUseWASDForDpad(controllerId, oldWASD === '1' || oldWASD === 'true');
+            localStorage.removeItem('gamepadUseWASD');
+          }
         }
-      }
+      } catch (_) { /* ignore */ }
     }
 
-    let mapping = mappingToParse ? JSON.parse(mappingToParse) : JSON.parse(JSON.stringify(this.defaultMapping));
+    let mapping = null;
+    if (mappingToParse) {
+      try {
+        mapping = JSON.parse(mappingToParse);
+      } catch (_) {
+        mapping = null;
+      }
+    }
+    if (!mapping) {
+      const recommendation = this.getActiveGameRecommendation();
+      if (recommendation?.mapping) {
+        mapping = JSON.parse(JSON.stringify(recommendation.mapping));
+      }
+    }
+    if (!mapping) {
+      mapping = JSON.parse(JSON.stringify(this.defaultMapping));
+    }
     // Migrate old face button keys (north/east/south/west) to new names
     try {
       if (mapping && mapping.face) {
@@ -1883,8 +1913,95 @@ class GamepadManager {
     return null;
   }
 
+  extractRecommendationFromGame(game) {
+    if (!game || !game.recommendedButtons) return null;
+    const rec = game.recommendedButtons;
+    if (Array.isArray(rec)) return null;
+    if (rec && typeof rec === 'object' && rec.mapping) {
+      return {
+        gameId: game.id || null,
+        mapping: rec.mapping,
+        useWASD: rec.useWASD || {},
+      };
+    }
+    return null;
+  }
+
+  getActiveGameRecommendation() {
+    try {
+      const game = this.getActiveLauncherGame();
+      const gameId = game?.id || null;
+      if (gameId !== this.cachedRecommendationGameId) {
+        this.cachedRecommendation = this.extractRecommendationFromGame(game);
+        this.cachedRecommendationGameId = gameId;
+      }
+      return this.cachedRecommendation;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  getRecommendedUseWASD(controllerId) {
+    if (!controllerId) return undefined;
+    const recommendation = this.getActiveGameRecommendation();
+    if (!recommendation || !recommendation.useWASD) return undefined;
+    const useWASDMap = recommendation.useWASD;
+    if (typeof useWASDMap[controllerId] === 'boolean') return useWASDMap[controllerId];
+    if (typeof useWASDMap.default === 'boolean') return useWASDMap.default;
+    return undefined;
+  }
+
+  applyRecommendationToController(controllerId, options = {}) {
+    if (!controllerId) return false;
+    const recommendation = this.getActiveGameRecommendation();
+    if (!recommendation || !recommendation.mapping) return false;
+    const skipIfHasLocal = options.skipIfHasLocal !== undefined ? options.skipIfHasLocal : true;
+    if (skipIfHasLocal) {
+      try {
+        if (localStorage.getItem(`gamepadMapping_${controllerId}`) !== null) {
+          return false;
+        }
+      } catch (_) { /* ignore */ }
+    }
+    try {
+      this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(recommendation.mapping));
+    } catch (_) {
+      this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(this.defaultMapping));
+    }
+    const recommendedWASD = this.getRecommendedUseWASD(controllerId);
+    if (typeof recommendedWASD === 'boolean') {
+      this.controllerUseWASD[controllerId] = recommendedWASD;
+    }
+    return true;
+  }
+
+  applyActiveRecommendationToControllers(options = {}) {
+    const recommendation = this.getActiveGameRecommendation();
+    if (!recommendation || !recommendation.mapping) return;
+    const controllers = Object.values(this.controllers);
+    controllers.forEach((controller) => {
+      if (!controller || !controller.id) return;
+      const controllerId = this.getControllerId(controller);
+      this.applyRecommendationToController(controllerId, options);
+    });
+    if (this.isConfiguratorOpen && this.isConfiguratorOpen()) {
+      try { this.onConfigControllerChanged(); } catch (_) {}
+    }
+  }
+
+  onLauncherGameChanged(game) {
+    if (game && typeof game === 'object') {
+      this.cachedRecommendation = this.extractRecommendationFromGame(game);
+      this.cachedRecommendationGameId = game.id || null;
+    } else {
+      this.cachedRecommendation = null;
+      this.cachedRecommendationGameId = null;
+    }
+    this.applyActiveRecommendationToControllers({ skipIfHasLocal: true });
+  }
+
   async persistMappingForCurrentGame(controllerId) {
-    if (!controllerId) return;
+    if (!controllerId || controllerId === 'all') return;
     const game = this.getActiveLauncherGame();
     const mapping = this.controllerMappings[controllerId];
     if (!game || !game.id || !mapping) return;
