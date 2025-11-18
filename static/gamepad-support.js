@@ -1833,7 +1833,18 @@ class GamepadManager {
       this.persistMappingForCurrentGame(controllerId);
     }
   }
-  
+  isValidMapping(mapping) {
+    if (!mapping || typeof mapping !== 'object') return false;
+    // Check that required button groups exist and are not empty
+    const requiredGroups = ['dpad', 'face', 'shoulder', 'special'];
+    for (const group of requiredGroups) {
+      if (!mapping[group] || typeof mapping[group] !== 'object') return false;
+      // Check that the group has at least one button defined
+      if (Object.keys(mapping[group]).length === 0) return false;
+    }
+    return true;
+  }
+
   loadMapping(controllerId) {
     if (!controllerId) return JSON.parse(JSON.stringify(this.defaultMapping));
     let saved = null;
@@ -1874,7 +1885,7 @@ class GamepadManager {
     }
     if (!mapping) {
       const recommendation = this.getActiveGameRecommendation();
-      if (recommendation?.mapping) {
+      if (recommendation?.mapping && this.isValidMapping(recommendation.mapping)) {
         mapping = JSON.parse(JSON.stringify(recommendation.mapping));
       }
     }
