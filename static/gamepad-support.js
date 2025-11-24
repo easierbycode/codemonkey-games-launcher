@@ -21,6 +21,10 @@ class GamepadManager {
     this.gameMenuFocusIndex = -1;
     this.wasGameMenuOpen = false;
 
+    // Cooldown to prevent double-presses on rapid state changes
+    this.lastActionTimestamp = 0;
+    this.actionCooldown = 250; // Milliseconds
+
     // Detect Gamepad Button state
     this._detecting = false; // { ui: { selectEl, buttonEl, hintEl } } | false
     this._detectSnapshot = {}; // controllerIndex -> [bool]
@@ -602,6 +606,7 @@ class GamepadManager {
   }
 
   handleGameMenuNavigation(direction) {
+    if (!this.canTakeAction()) return;
     const items = this.getVisibleGameMenuButtons();
     if (items.length === 0) return;
     if (this.gameMenuFocusIndex < 0) this.gameMenuFocusIndex = 0;
@@ -614,13 +619,25 @@ class GamepadManager {
       return;
     }
     try { items[this.gameMenuFocusIndex].focus(); } catch (_) {}
+    this.actionTaken();
   }
 
   activateFocusedGameMenuItem() {
+    if (!this.canTakeAction()) return;
     const items = this.getVisibleGameMenuButtons();
     if (items.length === 0) return;
     if (this.gameMenuFocusIndex < 0) this.gameMenuFocusIndex = 0;
     try { items[this.gameMenuFocusIndex].click(); } catch (_) {}
+    this.actionTaken();
+  }
+
+  // ===== Cooldown helpers =====
+  canTakeAction() {
+    return Date.now() - this.lastActionTimestamp > this.actionCooldown;
+  }
+
+  actionTaken() {
+    this.lastActionTimestamp = Date.now();
   }
 
   // Routing depending on OSD state
@@ -631,6 +648,7 @@ class GamepadManager {
   }
   
   handleLauncherNavigation(direction) {
+    if (!this.canTakeAction()) return;
     console.log('Gamepad navigation:', direction, 'focusIndex exists:', !!window.focusIndex, 'focusedIndex:', window.focusedIndex);
     if (window.focusIndex) {
       switch (direction) {
@@ -643,16 +661,19 @@ class GamepadManager {
           window.focusIndex(window.focusedIndex + 1, false);
           break;
       }
+      this.actionTaken();
     } else {
       console.warn('window.focusIndex not available for navigation');
     }
   }
 
   handleLauncherAction(action) {
+    if (!this.canTakeAction()) return;
     console.log('Launcher action:', action, 'focusedIndex:', window.focusedIndex);
     if (action === 'select' && window.focusIndex && window.focusedIndex !== undefined) {
       console.log('Launching game at index', window.focusedIndex);
       window.focusIndex(window.focusedIndex, true); // Launch game
+      this.actionTaken();
     }
   }
 
@@ -914,6 +935,7 @@ class GamepadManager {
   }
 
   handleOSDNavigation(direction) {
+    if (!this.canTakeAction()) return;
     const items = this.getVisibleOSDButtons();
     if (items.length === 0) return;
     if (this.osdFocusIndex < 0) this.osdFocusIndex = 0;
@@ -926,13 +948,16 @@ class GamepadManager {
       return;
     }
     try { items[this.osdFocusIndex].focus(); } catch (_) {}
+    this.actionTaken();
   }
 
   activateFocusedOSDItem() {
+    if (!this.canTakeAction()) return;
     const items = this.getVisibleOSDButtons();
     if (items.length === 0) return;
     if (this.osdFocusIndex < 0) this.osdFocusIndex = 0;
     try { items[this.osdFocusIndex].click(); } catch (_) {}
+    this.actionTaken();
   }
   
   handleSpecialActions(groupName, buttonName, controllerIndex) {
