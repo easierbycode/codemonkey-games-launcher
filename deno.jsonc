@@ -22,7 +22,7 @@
     "run:mac": "build/mac/codemonkey-games-launcher",
     "run:mac:app": "sh -c 'open \"build/mac/${APP_NAME:-CodemonkeyGamesLauncher}.app\"'",
     "build-run:mac": "deno task build:mac:binary && deno task run:mac",
-    "package:extension": "sh -c 'mkdir -p build && zip -r build/chrome-extension.zip manifest.json scripts images'"
+    "package:extension": "deno run -A scripts/package-extension.ts"
   },
   "fmt": {
     "useTabs": false,
