@@ -261,11 +261,37 @@ export async function extractArchiveToDir(
   }
 }
 
+export function parseGithubRepo(repo: string): { owner: string; name: string } {
+  const cleaned = String(repo).trim().replace(/^git\+/, "");
+
+  // Try URL parsing first to robustly handle extra path segments (tree/branch/etc.).
+  const looksLikeUrl = /^https?:\/\//i.test(cleaned) || cleaned.toLowerCase().startsWith("github.com/");
+  if (looksLikeUrl) {
+    try {
+      const url = new URL(cleaned.startsWith("http") ? cleaned : `https://${cleaned}`);
+      if (url.hostname.toLowerCase().includes("github.com")) {
+        const [owner, name] = url.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+        if (owner && name && !owner.startsWith(":")) {
+          return { owner, name: name.replace(/\.git$/, "") };
+        }
+      }
+    } catch {
+      // Fall through to regex parsing
+    }
+  }
+
+  const match = cleaned.match(/github\.com[:/]+([^/]+)\/([^/]+)(?:\.git)?/i)
+    || cleaned.match(/^([^/]+)\/([^/]+)(?:\.git)?$/);
+
+  if (match?.[1] && match?.[2]) {
+    return { owner: match[1], name: match[2].replace(/\.git$/, "") };
+  }
+
+  throw new Error("invalid repo url");
+}
+
 export async function downloadFromGithub(repo: string, branch: string): Promise<Uint8Array> {
-  const m = String(repo).match(/github.com\/(.+?)\/(.+?)(?:\.git)?$/);
-  if (!m) throw new Error("invalid repo url");
-  const owner = m[1];
-  const repoName = m[2];
+  const { owner, name: repoName } = parseGithubRepo(repo);
   const useBranch = branch || "main";
   const zipUrl = `https://codeload.github.com/${owner}/${repoName}/zip/refs/heads/${useBranch}`;
   const resp = await fetch(zipUrl);
@@ -277,6 +303,36 @@ export async function downloadFromUrl(url: string): Promise<Uint8Array> {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error("download failed");
   return new Uint8Array(await resp.arrayBuffer());
+}
+
+export async function addGameFromGithub(options: {
+  repo: string;
+  branch?: string;
+  subdir?: string;
+  name?: string;
+}): Promise<{ id: string }> {
+  const { repo, branch, subdir, name } = options;
+  if (!repo) throw new Error("repo required");
+
+  const { name: repoName } = parseGithubRepo(repo);
+  const zipBytes = await downloadFromGithub(repo, branch ?? "main");
+  const id = ((name || repoName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")) || "game";
+  const target = join(GAMES_DIR, id);
+  await ensureDir(target);
+  await extractArchiveToDir(zipBytes, `${repoName}.zip`, target, subdir || "root");
+
+  const sourceInfo: SourceInfo = { source: "github", repo, branch: branch ?? "main", subdir: subdir || "root" };
+  const metadataPath = join(target, "codemonkey.json");
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(await Deno.readTextFile(metadataPath));
+  } catch {
+    metadata = {};
+  }
+  metadata.sourceInfo = sourceInfo;
+  await Deno.writeTextFile(metadataPath, JSON.stringify(metadata, null, 2));
+
+  return { id };
 }
 
 export function isCompiled(): boolean {

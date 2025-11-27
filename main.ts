@@ -7,7 +7,7 @@
 
 import { start } from "$fresh/server.ts";
 import manifest from "./fresh.gen.ts";
-import { ROOT } from "./lib/utils.ts";
+import { ROOT, addGameFromGithub } from "./lib/utils.ts";
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 const RUNTIME_CONFIG = JSON.stringify({
@@ -86,6 +86,50 @@ async function ensureFreshConfig() {
     await Deno.writeTextFile("deno.json", `${RUNTIME_CONFIG}\n`);
   } catch (err) {
     console.error("Unable to create fallback deno.json:", err);
+  }
+}
+
+async function handleProtocolArgs() {
+  if (!Deno.args.length) return;
+
+  const rawArg = Deno.args.find((value) =>
+    value.toLowerCase().startsWith("codemonkey://")
+  );
+  if (!rawArg) return;
+
+  const cleanedArg = rawArg.replace(/^['"]+|['"]+$/g, "");
+
+  let url: URL;
+  try {
+    url = new URL(cleanedArg);
+  } catch (err) {
+    console.error("Failed to parse protocol URL:", err);
+    return;
+  }
+
+  const action = (url.hostname || url.pathname.replace(/^\/+/, "")).toLowerCase();
+  if (action !== "add") {
+    console.warn(`Unhandled protocol action: ${action || "(none)"}`);
+    return;
+  }
+
+  const repo = url.searchParams.get("repo");
+  if (!repo) {
+    console.error("Protocol add request missing repo parameter.");
+    return;
+  }
+
+  const branch = url.searchParams.get("branch") || "main";
+  const subdirHint = url.searchParams.get("folder") ?? url.searchParams.get("subdir") ?? "root";
+  const subdir = subdirHint.trim() === "" ? "root" : subdirHint;
+  const name = url.searchParams.get("name") || undefined;
+
+  console.log(`Processing protocol add request for ${repo} (branch=${branch}, folder=${subdir}).`);
+  try {
+    const { id } = await addGameFromGithub({ repo, branch, subdir, name });
+    console.log(`Protocol add complete. Installed as '${id}'.`);
+  } catch (err) {
+    console.error("Failed to add game from protocol URL:", err);
   }
 }
 
@@ -181,6 +225,7 @@ try {
 
 installConfigFallbacks();
 await ensureFreshConfig();
+await handleProtocolArgs();
 
 const BASE_PORT = Number(Deno.env.get("PORT") ?? "8000");
 const HOSTNAME = Deno.env.get("HOSTNAME") ?? "127.0.0.1";
