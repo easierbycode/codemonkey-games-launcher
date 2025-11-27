@@ -571,6 +571,17 @@ gameMenu.addEventListener('click', (e) => {
 // Initial load
 fetchGames();
 
+// Refresh games when window regains focus (e.g., after adding via Chrome extension)
+let lastFocusTime = Date.now();
+window.addEventListener('focus', async () => {
+  const now = Date.now();
+  // Only refresh if it's been more than 1 second since last focus (debounce)
+  if (now - lastFocusTime > 1000) {
+    await fetchGames();
+  }
+  lastFocusTime = now;
+});
+
 // Expose to gamepad system
 window.focusIndex = focusIndex;
 Object.defineProperty(window, 'focusedIndex', {

@@ -42,7 +42,7 @@ export type GamepadMapping = Record<string, Record<string, GamepadButtonMapping>
 
 export type RecommendedButtonsContainer = {
   mapping: GamepadMapping;
-  useWASD?: GamepadUseWASDMap;
+  useWASD?: boolean | GamepadUseWASDMap; // boolean for global, map for legacy per-controller
   buttons?: RecommendedButton[];
 };
 

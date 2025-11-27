@@ -60,11 +60,11 @@ class GamepadManager {
     
     // Load saved mapping or use default
     this.controllerMappings = {}; // Maps controller ID to mapping object
-    this.controllerUseWASD = {}; // Maps controller ID to boolean
     this.cachedRecommendation = null;
     this.cachedRecommendationGameId = null;
 
-    // Start button preferences
+    // Global preferences (not per-controller)
+    this.useWASD = this.loadUseWASDPreference();
     this.simulateTouchOnStart = this.loadStartTouchPreference();
     this.touchTargetSelector = this.loadTouchTargetPreference();
     this.startSceneName = this.loadStartScenePreference();
@@ -149,26 +149,6 @@ class GamepadManager {
 
     this.controllers[gamepad.index] = gamepad;
     this.controllerMappings[controllerId] = this.loadMapping(controllerId);
-    this.controllerUseWASD[controllerId] = this.loadUseWASDPreference(controllerId);
-
-    // If this is the 2nd gamepad connecting, ensure one is wasd and the other is arrowkeys
-    try {
-      const connectedControllers = Object.values(this.controllers).filter(c => c && c.id);
-      // Check if we are adding the second controller
-      if (connectedControllers.length === 1) {
-        const firstController = connectedControllers[0];
-        if (firstController) {
-          const firstId = this.getControllerId(firstController);
-          const firstUsesWASD = this.controllerUseWASD[firstId];
-          // If first controller is NOT using WASD, and this one has no preference, default it to ON
-          if (!firstUsesWASD && localStorage.getItem(`gamepadUseWASD_${controllerId}`) === null) {
-            this.controllerUseWASD[controllerId] = true;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Error during 2nd gamepad WASD defaulting logic:', e);
-    }
     
     // Initialize button state for all expected buttons
     this.buttonState[gamepad.index] = {
@@ -201,7 +181,6 @@ class GamepadManager {
     delete this.buttonState[gamepad.index];
     delete this.analogState[gamepad.index];
     delete this.controllerMappings[controllerId];
-    delete this.controllerUseWASD[controllerId];
     this.refreshTestingControllerOptionsIfOpen();
   }
   
@@ -217,7 +196,6 @@ class GamepadManager {
       if (!controller || !controller.id) continue;
       const controllerId = this.getControllerId(controller);
       const mapping = this.controllerMappings[controllerId];
-      const useWASD = this.controllerUseWASD[controllerId];
 
       if (!mapping) continue; // Don't process if no mapping is loaded
 
@@ -240,10 +218,10 @@ class GamepadManager {
       this.wasGameMenuOpen = gameMenuOpen;
 
       // Process all mapped buttons
-      this.processButtonGroup('dpad', controller, controllerIndex, prevButtonState, mapping, useWASD);
-      this.processButtonGroup('face', controller, controllerIndex, prevButtonState, mapping, useWASD);
-      this.processButtonGroup('shoulder', controller, controllerIndex, prevButtonState, mapping, useWASD);
-      this.processButtonGroup('special', controller, controllerIndex, prevButtonState, mapping, useWASD);
+      this.processButtonGroup('dpad', controller, controllerIndex, prevButtonState, mapping, this.useWASD);
+      this.processButtonGroup('face', controller, controllerIndex, prevButtonState, mapping, this.useWASD);
+      this.processButtonGroup('shoulder', controller, controllerIndex, prevButtonState, mapping, this.useWASD);
+      this.processButtonGroup('special', controller, controllerIndex, prevButtonState, mapping, this.useWASD);
       
       // Process analog sticks
       this.processAnalogSticks(controller, controllerIndex, mapping);
@@ -1364,16 +1342,14 @@ class GamepadManager {
     if (!controllerId || controllerId === 'all') return;
 
     const mapping = this.controllerMappings[controllerId];
-    const useWASD = this.controllerUseWASD[controllerId];
-    if (mapping === undefined || useWASD === undefined) {
+    if (mapping === undefined) {
         console.warn(`No settings found for controller ${controllerId}. Using defaults.`);
         this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(this.defaultMapping));
-        this.controllerUseWASD[controllerId] = false;
     }
 
-    // Update WASD toggle
+    // Update WASD toggle (global setting)
     const wasdToggle = document.querySelector('#wasd-toggle');
-    if (wasdToggle) wasdToggle.checked = !!useWASD;
+    if (wasdToggle) wasdToggle.checked = !!this.useWASD;
 
     // Update Start button preferences
     const startTouchToggle = document.querySelector('#start-touch-toggle');
@@ -1504,7 +1480,7 @@ class GamepadManager {
     if (confirm('Reset all controller mappings to default for ALL connected gamepads? This will clear all customizations.')) {
       // Clear from memory
       this.controllerMappings = {};
-      this.controllerUseWASD = {};
+      this.useWASD = false; // Reset global WASD setting
 
       // Re-initialize for currently connected controllers
       for (const idx in this.controllers) {
@@ -1512,7 +1488,6 @@ class GamepadManager {
         if (controller && controller.id) {
           const controllerId = this.getControllerId(controller);
           this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(this.defaultMapping));
-          this.controllerUseWASD[controllerId] = false; // Default WASD to off
         }
       }
 
@@ -1521,7 +1496,7 @@ class GamepadManager {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && (key.startsWith('gamepadMapping_') || key.startsWith('gamepadUseWASD_'))) {
+          if (key && (key.startsWith('gamepadMapping_') || key.startsWith('gamepadUseWASD'))) {
             keysToRemove.push(key);
           }
         }
@@ -1792,25 +1767,41 @@ class GamepadManager {
   }
 
   // ===== Preferences (WASD layout) =====
-  setUseWASDForDpad(controllerId, enabled) {
-    if (!controllerId) return;
-    this.controllerUseWASD[controllerId] = !!enabled;
-    try { localStorage.setItem(`gamepadUseWASD_${controllerId}`, enabled ? '1' : '0'); } catch (_) {}
-    if (controllerId !== 'all') {
-      this.persistMappingForCurrentGame(controllerId);
+  setUseWASDForDpad(enabled) {
+    this.useWASD = !!enabled;
+    try { localStorage.setItem('gamepadUseWASD', enabled ? '1' : '0'); } catch (_) {}
+    // Persist to game metadata if we have an active game
+    const game = this.getActiveLauncherGame();
+    if (game && game.id) {
+      this.persistGlobalSettings(game.id);
     }
   }
 
-  loadUseWASDPreference(controllerId) {
-    if (!controllerId) return false;
+  loadUseWASDPreference() {
+    // Try to load global setting first
     try {
-      const v = localStorage.getItem(`gamepadUseWASD_${controllerId}`);
+      const v = localStorage.getItem('gamepadUseWASD');
       if (v !== null) {
         return v === '1' || v === 'true';
       }
     } catch (_) { /* ignore */ }
-    const recommended = this.getRecommendedUseWASD(controllerId);
-    if (typeof recommended === 'boolean') return recommended;
+
+    // Migration: Check for old per-controller settings
+    try {
+      const keys = Object.keys(localStorage);
+      for (const key of keys) {
+        if (key.startsWith('gamepadUseWASD_')) {
+          const v = localStorage.getItem(key);
+          const value = v === '1' || v === 'true';
+          // Migrate to global setting
+          localStorage.setItem('gamepadUseWASD', value ? '1' : '0');
+          // Clean up old per-controller settings
+          localStorage.removeItem(key);
+          return value;
+        }
+      }
+    } catch (_) { /* ignore */ }
+
     return false;
   }
 
@@ -1890,12 +1881,6 @@ class GamepadManager {
           // To prevent all controllers from getting this, we should remove it.
           // This migration will only happen once per user.
           localStorage.removeItem('gamepadMapping');
-          // Also migrate the old WASD setting
-          const oldWASD = localStorage.getItem('gamepadUseWASD');
-          if (oldWASD) {
-            this.setUseWASDForDpad(controllerId, oldWASD === '1' || oldWASD === 'true');
-            localStorage.removeItem('gamepadUseWASD');
-          }
         }
       } catch (_) { /* ignore */ }
     }
@@ -1977,13 +1962,15 @@ class GamepadManager {
     }
   }
 
-  getRecommendedUseWASD(controllerId) {
-    if (!controllerId) return undefined;
+  getRecommendedUseWASD() {
     const recommendation = this.getActiveGameRecommendation();
-    if (!recommendation || !recommendation.useWASD) return undefined;
-    const useWASDMap = recommendation.useWASD;
-    if (typeof useWASDMap[controllerId] === 'boolean') return useWASDMap[controllerId];
-    if (typeof useWASDMap.default === 'boolean') return useWASDMap.default;
+    if (!recommendation) return undefined;
+    // Check if useWASD is a boolean (new global format)
+    if (typeof recommendation.useWASD === 'boolean') return recommendation.useWASD;
+    // Legacy: check for .default in useWASD map
+    if (recommendation.useWASD && typeof recommendation.useWASD.default === 'boolean') {
+      return recommendation.useWASD.default;
+    }
     return undefined;
   }
 
@@ -2004,9 +1991,9 @@ class GamepadManager {
     } catch (_) {
       this.controllerMappings[controllerId] = JSON.parse(JSON.stringify(this.defaultMapping));
     }
-    const recommendedWASD = this.getRecommendedUseWASD(controllerId);
+    const recommendedWASD = this.getRecommendedUseWASD();
     if (typeof recommendedWASD === 'boolean') {
-      this.controllerUseWASD[controllerId] = recommendedWASD;
+      this.useWASD = recommendedWASD;
     }
     return true;
   }
@@ -2041,7 +2028,6 @@ class GamepadManager {
     const game = this.getActiveLauncherGame();
     const mapping = this.controllerMappings[controllerId];
     if (!game || !game.id || !mapping) return;
-    const useWASD = this.controllerUseWASD[controllerId];
     try {
       const res = await fetch(`/api/games/${encodeURIComponent(game.id)}/recommended-buttons`, {
         method: 'POST',
@@ -2049,7 +2035,6 @@ class GamepadManager {
         body: JSON.stringify({
           controllerId,
           gamepadMapping: mapping,
-          gamepadUseWASD: typeof useWASD === 'boolean' ? useWASD : undefined,
         }),
       });
       if (!res.ok) {
@@ -2057,6 +2042,24 @@ class GamepadManager {
       }
     } catch (err) {
       console.warn('Failed to sync controller layout to codemonkey.json', err);
+    }
+  }
+
+  async persistGlobalSettings(gameId) {
+    if (!gameId) return;
+    try {
+      const res = await fetch(`/api/games/${encodeURIComponent(gameId)}/recommended-buttons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gamepadUseWASD: typeof this.useWASD === 'boolean' ? this.useWASD : undefined,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.warn('Failed to sync global settings to codemonkey.json', err);
     }
   }
 }

@@ -48,8 +48,9 @@ export const handler: Handlers = {
         return new Response("Invalid JSON body", { status: 400 });
       }
 
-      if (!payload?.gamepadMapping || typeof payload.gamepadMapping !== "object") {
-        return new Response("gamepadMapping object required", { status: 400 });
+      // At least one of gamepadMapping or gamepadUseWASD must be provided
+      if (!payload?.gamepadMapping && payload?.gamepadUseWASD === undefined) {
+        return new Response("gamepadMapping or gamepadUseWASD required", { status: 400 });
       }
 
       const metadataPath = join(target, "codemonkey.json");
@@ -61,22 +62,26 @@ export const handler: Handlers = {
         metadata = {};
       }
 
-      const controllerId = String(payload.controllerId || "default");
       const previousValue = metadata.recommendedButtons;
       const existingContainer = getExistingContainer(previousValue);
-      const useWASD: GamepadUseWASDMap = { ...(existingContainer?.useWASD ?? {}) };
       const legacyButtons = Array.isArray(previousValue) ? previousValue : undefined;
       const buttons = Array.isArray(existingContainer?.buttons)
         ? existingContainer.buttons
         : legacyButtons;
+
+      // Build the container with existing or new values
+      const container: RecommendedButtonsContainer = {
+        mapping: payload.gamepadMapping || existingContainer?.mapping || {},
+      };
+
+      // Handle useWASD - now stored globally as boolean
       if (payload.gamepadUseWASD !== undefined) {
-        useWASD[controllerId] = payload.gamepadUseWASD;
+        container.useWASD = payload.gamepadUseWASD;
+      } else if (existingContainer?.useWASD !== undefined) {
+        // Preserve existing value if not updating
+        container.useWASD = existingContainer.useWASD;
       }
 
-      const container: RecommendedButtonsContainer = {
-        mapping: payload.gamepadMapping,
-      };
-      if (Object.keys(useWASD).length) container.useWASD = useWASD;
       if (buttons && buttons.length) container.buttons = buttons;
       metadata.recommendedButtons = container;
 
