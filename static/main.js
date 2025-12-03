@@ -6,6 +6,11 @@ try {
 } catch {}
 
 const coverflowEl = document.getElementById('coverflow');
+const gridEl = document.getElementById('grid');
+const searchInput = document.getElementById('q');
+const sortSelect = document.getElementById('sort');
+const viewSelect = document.getElementById('view');
+const countEl = document.getElementById('count');
 const gameframe = document.getElementById('gameframe');
 const zipInput = document.getElementById('zip-input');
 const addZipBtn = document.getElementById('add-zip');
@@ -59,7 +64,108 @@ function el(tag, className, text) {
 async function fetchGames() {
   const res = await fetch('/api/games');
   games = await res.json();
-  renderCoverflow();
+  renderGrid();
+  renderCoverflow(); // Keep for backwards compatibility
+}
+
+function norm(s = '') {
+  return s.toLowerCase();
+}
+
+function matchGame(game, query) {
+  if (!query) return true;
+  const searchableText = [
+    game.name,
+    game.description || '',
+    game.author || '',
+    game.version || '',
+    ...(game.tags || [])
+  ].filter(Boolean).join(' ').toLowerCase();
+  return searchableText.includes(query);
+}
+
+function sortGames(gameList) {
+  const mode = sortSelect.value;
+  const sorted = [...gameList];
+  if (mode === 'az') return sorted.sort((a, b) => a.name.localeCompare(b.name));
+  if (mode === 'za') return sorted.sort((a, b) => b.name.localeCompare(a.name));
+  // Recently updated
+  return sorted.sort((a, b) => {
+    const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return dateB - dateA;
+  });
+}
+
+function cardHTML(game) {
+  const thumb = game.hasThumbnail
+    ? `<img alt="" loading="lazy" src="${game.urlPath}thumbnail.png?v=${new Date().getTime()}">`
+    : `<div style="opacity:.6;font-size:12px">No Cover</div>`;
+  const version = game.version ? `<span title="Version" style="opacity:.75">v${game.version}</span>` : '';
+  const when = game.updatedAt ? new Date(game.updatedAt).toLocaleDateString() : '';
+  const tags = (game.tags || []).slice(0, 4).map(t => `<span class="tag">${t}</span>`).join('');
+  const description = (game.description || '').slice(0, 96);
+
+  return `
+    <article class="card" data-id="${game.id}">
+      <div class="thumb" role="button" tabindex="0" aria-label="Open ${game.name}" data-game-id="${game.id}">
+        ${thumb}
+      </div>
+      <div class="meta">
+        <div class="row">
+          <div class="name" title="${game.name}">${game.name}</div>
+          <button class="kebab" title="Game Menu" data-kebab="${game.id}" aria-label="Game menu for ${game.name}">⋮</button>
+        </div>
+        <div class="desc">${description}</div>
+        <div class="tags">${tags}</div>
+        <div class="row" style="color:#a1b2c7;font-size:12px">
+          <div>${version} ${when ? '• ' + when : ''}</div>
+          <button class="play" data-game-id="${game.id}">Play</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+function renderGrid() {
+  const query = norm(searchInput.value);
+  const filtered = sortGames(games.filter(g => matchGame(g, query)));
+  countEl.textContent = String(filtered.length);
+
+  if (viewSelect.value === 'list') {
+    gridEl.style.gridTemplateColumns = '1fr';
+  } else {
+    gridEl.style.removeProperty('grid-template-columns');
+  }
+
+  if (filtered.length === 0) {
+    gridEl.innerHTML = '<p class="no-games-found">No games found.</p>';
+  } else {
+    gridEl.innerHTML = filtered.map(cardHTML).join('');
+  }
+
+  // Add event listeners to play buttons and thumbnails
+  gridEl.querySelectorAll('[data-game-id]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const gameId = el.getAttribute('data-game-id');
+      const game = games.find(g => g.id === gameId);
+      if (game) {
+        focusedIndex = games.indexOf(game);
+        openGame(game);
+      }
+    });
+  });
+
+  // Add event listeners to kebab menu buttons
+  gridEl.querySelectorAll('[data-kebab]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const gameId = btn.getAttribute('data-kebab');
+      const game = games.find(g => g.id === gameId);
+      if (game) showGameMenu(game);
+    });
+  });
 }
 
 function placeholderCard(name) {
@@ -330,7 +436,7 @@ captureThumbBtn.addEventListener('click', async () => {
     const buf = await blob.arrayBuffer();
     const res = await fetch(`/api/games/${game.id}/thumbnail`, { method: 'POST', body: buf });
     if (res.ok) {
-      await fetchGames();
+      await fetchGames(); // This will call both renderGrid and renderCoverflow
       toggleOSD(false);
     } else {
       throw new Error('Upload failed');
@@ -508,7 +614,8 @@ async function deleteGame(gameId, gameIndex) {
         focusedIndex = Math.max(0, games.length - 1);
       }
 
-      // Re-render the coverflow
+      // Re-render the grid and coverflow
+      renderGrid();
       renderCoverflow();
 
       alert('Game deleted successfully!');
@@ -567,6 +674,11 @@ gameMenu.addEventListener('click', (e) => {
     hideGameMenu();
   }
 });
+
+// Grid controls event listeners
+searchInput.addEventListener('input', renderGrid);
+sortSelect.addEventListener('change', renderGrid);
+viewSelect.addEventListener('change', renderGrid);
 
 // Initial load
 fetchGames();

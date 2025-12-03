@@ -15,33 +15,49 @@
   </div>
 
   <main>
+    <div class="controls">
+      <input id="q" class="search" type="search" placeholder="Search games…" />
+      <select id="sort" class="select">
+        <option value="updated">Recently updated</option>
+        <option value="az">A → Z</option>
+        <option value="za">Z → A</option>
+      </select>
+      <select id="view" class="select">
+        <option value="grid">Grid</option>
+        <option value="list">List</option>
+      </select>
+    </div>
+
+    <div id="grid" class="grid" aria-live="polite"></div>
+    <div class="status"><span id="count">0</span> games</div>
+
     <section class="coverflow" id="coverflow" aria-label="Game library"></section>
     <section class="player">
       <iframe id="gameframe" title="Game" allowfullscreen></iframe>
     </section>
   </main>
 
-  <div style="background-color: #D5D5D8; height: 12%; position: relative;">
-    <img src="https://raw.githubusercontent.com/easierbycode/nes/master/nes-logo.png" id="logo">
-  
-    <div class="box"></div>
-  </div>
-
-  <div style="background-color: #88848B; height: 3%; position: relative;">
-    <div class="box">
-      <div class="line"></div>
-    </div>
-  </div>
-
-  <div style="background-color: #88848B; height: 3%; position: relative;">
-    <div class="buttons">
-      <button id="add-zip">Add Game (ZIP)</button>
-      <button id="add-github">Add Game (GitHub)</button>
-      <button id="add-url">Add Game (URL)</button>
+  <div class="bar">
+    <div style="background-color: #D5D5D8; height: 12%; position: relative;">
+      <img src="https://raw.githubusercontent.com/easierbycode/nes/master/nes-logo.png" id="logo" alt="NES">
+      <div class="box"></div>
     </div>
 
-    <div class="box">
-      <div class="line"></div>
+    <div style="background-color: #88848B; height: 3%; position: relative;">
+      <div class="box">
+        <div class="line"></div>
+      </div>
+    </div>
+
+    <div style="background-color: #88848B; height: 3%; position: relative;">
+      <div class="buttons">
+        <button id="add-zip">Add Game (ZIP)</button>
+        <button id="add-github">Add Game (GitHub)</button>
+        <button id="add-url">Add Game (URL)</button>
+      </div>
+      <div class="box">
+        <div class="line"></div>
+      </div>
     </div>
   </div>
 
