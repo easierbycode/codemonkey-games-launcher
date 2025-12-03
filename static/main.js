@@ -219,7 +219,8 @@ function focusIndex(i, open, scroll = true) {
 
 function openGame(game) {
   if (!game) return;
-  const target = `${game.urlPath}index.html`;
+  const basePath = game.launchPath || game.urlPath;
+  const target = basePath.endsWith('/') ? `${basePath}index.html` : `${basePath}/index.html`;
   gameframe.src = target;
   currentGame = game;
   selectedGameId = game.id;

@@ -55,10 +55,27 @@ export type GameEntry = {
   name: string;
   path: string;
   urlPath: string;
+  launchPath: string;
   hasThumbnail: boolean;
   sourceInfo?: SourceInfo;
   recommendedButtons?: RecommendedButtonsMetadata;
 };
+
+function normalizeSubdirHint(subdirHint?: string | null): string {
+  const raw = (subdirHint ?? "root").trim();
+  if (!raw || raw.toLowerCase() === "root") return "";
+  const cleaned = raw.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const segments = cleaned.split("/").filter((seg) => seg && seg !== "." && seg !== "..");
+  return segments.join("/");
+}
+
+function resolveLaunchSubdir(subdirHint?: string | null): string {
+  const normalized = normalizeSubdirHint(subdirHint);
+  if (!normalized) return "";
+  const lower = normalized.toLowerCase();
+  if (lower === "dist" || lower === "docs") return "";
+  return normalized;
+}
 
 const DEFAULT_CONFIGS: Record<string, { recommendedButtons: RecommendedButton[] }> = {
   "monkey combat": {
@@ -101,11 +118,14 @@ export async function listGames(): Promise<GameEntry[]> {
       metadata.recommendedButtons = defaultConfig.recommendedButtons;
     }
 
+    const launchSubdir = resolveLaunchSubdir(metadata.sourceInfo?.subdir);
+
     entries.push({
       id,
       name,
       path: fsPath,
       urlPath: `/games/${id}/`,
+      launchPath: `/games/${id}/${launchSubdir ? `${launchSubdir}/` : ""}`,
       hasThumbnail,
       sourceInfo: metadata.sourceInfo,
       recommendedButtons: metadata.recommendedButtons,
@@ -245,9 +265,20 @@ export async function extractArchiveToDir(
   if (topLevel.length === 1) {
     base = join(extractRoot, topLevel[0]);
   }
-  const hint = (subdirHint || "root").toLowerCase();
-  if (hint === "dist" || hint === "docs") {
-    base = join(base, hint);
+  const normalizedSubdir = normalizeSubdirHint(subdirHint);
+  const lowerSubdir = normalizedSubdir.toLowerCase();
+  if (lowerSubdir === "dist" || lowerSubdir === "docs") {
+    base = join(base, normalizedSubdir);
+  } else if (normalizedSubdir) {
+    const candidate = join(base, normalizedSubdir);
+    try {
+      const info = await Deno.stat(candidate);
+      if (!info.isDirectory) {
+        console.warn(`Subdir '${normalizedSubdir}' is not a directory; using repo root.`);
+      }
+    } catch {
+      console.warn(`Subdir '${normalizedSubdir}' not found in archive; using repo root.`);
+    }
   }
   await ensureDir(targetDir);
   await copy(base, targetDir, { overwrite: true });
@@ -319,9 +350,11 @@ export async function addGameFromGithub(options: {
   const id = ((name || repoName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")) || "game";
   const target = join(GAMES_DIR, id);
   await ensureDir(target);
-  await extractArchiveToDir(zipBytes, `${repoName}.zip`, target, subdir || "root");
+  const normalizedSubdir = normalizeSubdirHint(subdir);
+  const subdirForStorage = normalizedSubdir || "root";
+  await extractArchiveToDir(zipBytes, `${repoName}.zip`, target, subdirForStorage);
 
-  const sourceInfo: SourceInfo = { source: "github", repo, branch: branch ?? "main", subdir: subdir || "root" };
+  const sourceInfo: SourceInfo = { source: "github", repo, branch: branch ?? "main", subdir: subdirForStorage };
   const metadataPath = join(target, "codemonkey.json");
   let metadata: Record<string, unknown> = {};
   try {

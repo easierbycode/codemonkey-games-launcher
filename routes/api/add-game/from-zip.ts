@@ -19,9 +19,10 @@ export const handler: Handlers = {
       const target = join(GAMES_DIR, id);
       await ensureDir(target);
       const bytes = new Uint8Array(await file.arrayBuffer());
-      await extractArchiveToDir(bytes, file.name, target, subdir);
+      const subdirForStorage = (subdir && subdir.trim() !== "") ? subdir : "root";
+      await extractArchiveToDir(bytes, file.name, target, subdirForStorage);
 
-      const sourceInfo: SourceInfo = { source: "zip" };
+      const sourceInfo: SourceInfo = { source: "zip", subdir: subdirForStorage };
       const metadataPath = join(target, "codemonkey.json");
       let metadata: Record<string, unknown> = {};
       try {

@@ -19,9 +19,11 @@ export const handler: Handlers = {
       const id = gameName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const target = join(GAMES_DIR, id);
       await ensureDir(target);
-      await extractArchiveToDir(zipBytes, archiveName, target, subdir || "root");
+      const cleanSubdir = (subdir && subdir.toString().trim()) || "";
+      const subdirForStorage = cleanSubdir || "root";
+      await extractArchiveToDir(zipBytes, archiveName, target, subdirForStorage);
 
-      const sourceInfo: SourceInfo = { source: "url", url: gameUrl, subdir: subdir || "root" };
+      const sourceInfo: SourceInfo = { source: "url", url: gameUrl, subdir: subdirForStorage };
       const metadataPath = join(target, "codemonkey.json");
       let metadata: Record<string, unknown> = {};
       try {
