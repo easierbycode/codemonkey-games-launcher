@@ -195,72 +195,95 @@ export const handler: Handlers = {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
-    // --- Static assets from root ---
-    if (pathname.startsWith("/static/") || pathname.startsWith("/assets/") || pathname.startsWith("/vendor/")) {
-        const filePath = join(ROOT, pathname.substring(1));
-        return await serveFile(filePath, false);
-    }
-
     // --- Game serving logic ---
     const serveGameFile = async (gameId: string, relPath: string, isIndex: boolean) => {
-        const filePath = join(GAMES_DIR, gameId, relPath);
-        return await serveFile(filePath, isIndex);
+      const filePath = join(GAMES_DIR, gameId, relPath);
+      return await serveFile(filePath, isIndex);
     };
+
+    const tryServeFromReferer = async (): Promise<Response | null> => {
+      const ref = req.headers.get("referer") || req.headers.get("referrer");
+      if (!ref) return null;
+
+      try {
+        const refUrl = new URL(ref);
+        const refPath = refUrl.pathname || "";
+        let gameId: string | null = null;
+        if (refPath.startsWith("/games/")) {
+          gameId = refPath.split("/")[2] || null;
+        } else if (/^\/[A-Za-z0-9_-]+\/?/.test(refPath)) {
+          const seg = refPath.split("/")[1];
+          try {
+            const st = await Deno.stat(join(GAMES_DIR, seg));
+            if (st.isDirectory) gameId = seg;
+          } catch { /* not a game folder */ }
+        }
+        if (gameId) {
+          const relPath = pathname.startsWith("/") ? pathname.substring(1) : pathname;
+          return await serveGameFile(gameId, relPath, false);
+        }
+      } catch { /* ignore bad referer */ }
+
+      return null;
+    };
+
+    // --- Static assets from root ---
+    const isStaticAssetPath = pathname.startsWith("/static/") || pathname.startsWith("/assets/") ||
+      pathname.startsWith("/vendor/");
+    if (isStaticAssetPath) {
+      const filePath = join(ROOT, pathname.substring(1));
+      try {
+        const st = await Deno.stat(filePath);
+        if (st.isFile || st.isSymlink) {
+          return await serveFile(filePath, false);
+        }
+      } catch (err) {
+        if (!(err instanceof Deno.errors.NotFound)) {
+          throw err;
+        }
+      }
+
+      const refererResponse = await tryServeFromReferer();
+      if (refererResponse) return refererResponse;
+
+      return new Response("Not Found", { status: 404 });
+    }
 
     // --- Game alias routing: /<gameId>/... -> /games/<gameId>/...
     const segs = pathname.replace(/^\/+/, "").split("/");
     const firstSeg = segs[0] || "";
     const reserved = new Set(["", "static", "assets", "vendor", "api", "games"]);
     if (!reserved.has(firstSeg)) {
-        try {
-            const st = await Deno.stat(join(GAMES_DIR, firstSeg));
-            if (st.isDirectory) {
-                const relPath = segs.slice(1).join("/");
-                const isIndex = relPath === "" || pathname.endsWith("/");
-                return await serveGameFile(firstSeg, isIndex ? "index.html" : relPath, isIndex);
-            }
-        } catch { /* not a game folder */ }
+      try {
+        const st = await Deno.stat(join(GAMES_DIR, firstSeg));
+        if (st.isDirectory) {
+          const relPath = segs.slice(1).join("/");
+          const isIndex = relPath === "" || pathname.endsWith("/");
+          return await serveGameFile(firstSeg, isIndex ? "index.html" : relPath, isIndex);
+        }
+      } catch { /* not a game folder */ }
     }
 
     // --- /games/ routing ---
     if (pathname.startsWith("/games/")) {
-        const relRaw = decodeURIComponent(pathname.replace(/^\/games\//, ""));
-        const segs = relRaw.split("/").filter(Boolean);
-        const gameId = segs[0] || "";
-        if (gameId) {
-            try {
-                const st = await Deno.stat(join(GAMES_DIR, gameId));
-                if (st.isDirectory) {
-                    const relPath = segs.slice(1).join("/");
-                    const isIndex = relPath === "" || pathname.endsWith("/");
-                    return await serveGameFile(gameId, isIndex ? "index.html" : relPath, isIndex);
-                }
-            } catch { /* not a game folder */ }
-        }
+      const relRaw = decodeURIComponent(pathname.replace(/^\/games\//, ""));
+      const segs = relRaw.split("/").filter(Boolean);
+      const gameId = segs[0] || "";
+      if (gameId) {
+        try {
+          const st = await Deno.stat(join(GAMES_DIR, gameId));
+          if (st.isDirectory) {
+            const relPath = segs.slice(1).join("/");
+            const isIndex = relPath === "" || pathname.endsWith("/");
+            return await serveGameFile(gameId, isIndex ? "index.html" : relPath, isIndex);
+          }
+        } catch { /* not a game folder */ }
+      }
     }
 
     // --- Referer-based routing for assets with weird base paths ---
-    const ref = req.headers.get("referer") || req.headers.get("referrer");
-    if (ref) {
-        try {
-            const refUrl = new URL(ref);
-            const refPath = refUrl.pathname || "";
-            let gameId: string | null = null;
-            if (refPath.startsWith("/games/")) {
-                gameId = refPath.split("/")[2] || null;
-            } else if (/^\/[A-Za-z0-9_-]+\/?/.test(refPath)) {
-                const seg = refPath.split("/")[1];
-                try {
-                    const st = await Deno.stat(join(GAMES_DIR, seg));
-                    if (st.isDirectory) gameId = seg;
-                } catch { /* not a game folder */ }
-            }
-            if (gameId) {
-                const relPath = pathname.startsWith("/") ? pathname.substring(1) : pathname;
-                return await serveGameFile(gameId, relPath, false);
-            }
-        } catch { /* ignore bad referer */ }
-    }
+    const refererResponse = await tryServeFromReferer();
+    if (refererResponse) return refererResponse;
 
     // --- Fallback to SPA ---
     const indexFile = await Deno.readFile(join(ROOT, "static", "index.html"));
