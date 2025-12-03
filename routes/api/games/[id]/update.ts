@@ -9,7 +9,7 @@ import {
 import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 export const handler: Handlers = {
-  async POST(req, ctx) {
+  async POST(_req, ctx) {
     try {
       const { id } = ctx.params;
       const target = join(GAMES_DIR, id);
@@ -25,7 +25,11 @@ export const handler: Handlers = {
       let sourceInfo: SourceInfo | undefined;
       try {
         const metaContent = await Deno.readTextFile(metadataPath);
-        sourceInfo = JSON.parse(metaContent);
+        const metadata = JSON.parse(metaContent);
+        if (metadata && typeof metadata === "object") {
+          const nested = (metadata as { sourceInfo?: SourceInfo }).sourceInfo;
+          sourceInfo = nested ?? (metadata as SourceInfo);
+        }
       } catch {
         return new Response("Game metadata not found or invalid", { status: 400 });
       }
