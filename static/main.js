@@ -1,16 +1,32 @@
 // Disable right-click/context menu globally in the launcher UI
 try {
-  const __cmHandler = (e) => { e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation(); return false; };
+  const __cmHandler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    return false;
+  };
   window.addEventListener('contextmenu', __cmHandler, true);
   document.addEventListener('contextmenu', __cmHandler, true);
 } catch {}
 
-const coverflowEl = document.getElementById('coverflow');
+const gridEl = document.getElementById('grid');
+const qInput = document.getElementById('q');
+const sortSel = document.getElementById('sort');
+const viewSel = document.getElementById('view');
+const countEl = document.getElementById('count');
+
+const playerShell = document.getElementById('player-shell');
+const nowPlayingTitle = document.getElementById('now-playing-title');
+const playerExitBtn = document.getElementById('player-exit');
+const playerOSDBtn = document.getElementById('player-osd');
+
 const gameframe = document.getElementById('gameframe');
 const zipInput = document.getElementById('zip-input');
 const addZipBtn = document.getElementById('add-zip');
 const addGithubBtn = document.getElementById('add-github');
-const addUrlBtn = document.getElementById('add-url');
+const addZipMenu = document.getElementById('add-zip-menu');
+
 const osd = document.getElementById('osd');
 const osdClose = document.getElementById('osd-close');
 const captureThumbBtn = document.getElementById('capture-thumb');
@@ -21,15 +37,16 @@ const reloadPageBtn = document.getElementById('reload-page');
 const osdTitle = document.getElementById('osd-title');
 const recommendedButtonsEl = document.getElementById('recommended-buttons');
 
-// Game menu elements
 const gameMenu = document.getElementById('game-menu');
 const gameMenuTitle = document.getElementById('game-menu-title');
 const updateGameBtn = document.getElementById('update-game-btn');
 const deleteGameBtn = document.getElementById('delete-game-btn');
 const cancelBtn = document.getElementById('cancel-btn');
 
+let allGames = [];
 let games = [];
 let focusedIndex = 0;
+let selectedGameId = null;
 let currentGame = null;
 
 function getRecommendedButtonList(recommended) {
@@ -49,22 +66,10 @@ function notifyGamepadManagerOfGameChange(game) {
   }
 }
 
-function el(tag, className, text) {
-  const e = document.createElement(tag);
-  if (className) e.className = className;
-  if (text) e.textContent = text;
-  return e;
-}
-
-async function fetchGames() {
-  const res = await fetch('/api/games');
-  games = await res.json();
-  renderCoverflow();
-}
-
 function placeholderCard(name) {
   const canvas = document.createElement('canvas');
-  canvas.width = 360; canvas.height = 480;
+  canvas.width = 360;
+  canvas.height = 480;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#121528';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -86,7 +91,7 @@ function wrapText(ctx, text, _x, _y, maxWidth, _lineHeight) {
   let line = '';
   const lines = [];
   for (const w of words) {
-    const test = line ? line + ' ' + w : w;
+    const test = line ? `${line} ${w}` : w;
     if (ctx.measureText(test).width > maxWidth) {
       if (line) lines.push(line);
       line = w;
@@ -96,71 +101,135 @@ function wrapText(ctx, text, _x, _y, maxWidth, _lineHeight) {
   return lines.slice(-4);
 }
 
-function renderCoverflow() {
-  coverflowEl.innerHTML = '';
-  const container = el('div', 'coverflow-container');
-  const track = el('div', 'coverflow-track');
-  container.appendChild(track);
-  coverflowEl.appendChild(container);
-
-  games.forEach((g, i) => {
-    const card = el('div', 'card dim');
-    card.dataset.index = String(i);
-    const title = el('div', 'label', g.name);
-    const bg = g.hasThumbnail ? `${g.urlPath}thumbnail.png?v=${new Date().getTime()}` : placeholderCard(g.name);
-    card.style.backgroundImage = `url(${bg})`;
-    card.appendChild(title);
-    card.addEventListener('click', () => focusIndex(i, true));
-    track.appendChild(card);
-  });
-  focusIndex(focusedIndex, false);
+async function fetchGames() {
+  try {
+    const res = await fetch('/api/games');
+    const data = await res.json();
+    allGames = Array.isArray(data) ? data : (Array.isArray(data.games) ? data.games : []);
+  } catch (err) {
+    console.error('Failed to load games', err);
+    gridEl.innerHTML = '<p class="no-games">Failed to load games.</p>';
+    countEl.textContent = '0';
+    games = [];
+    selectedGameId = null;
+    return;
+  }
+  renderGames({ preserveSelection: true });
 }
 
-function updateCardTransforms() {
-  const cards = Array.from(document.querySelectorAll('.card'));
-  const track = document.querySelector('.coverflow-track');
+function sortGames(list) {
+  const mode = sortSel?.value || 'az';
+  if (mode === 'za') return list.sort((a, b) => b.name.localeCompare(a.name));
+  return list.sort((a, b) => a.name.localeCompare(b.name));
+}
 
-  if (!track || !cards.length) return;
+function filterGames() {
+  const query = (qInput?.value || '').trim().toLowerCase();
+  const base = sortGames([...allGames]);
+  if (!query) return base;
+  return base.filter((g) => g.name.toLowerCase().includes(query));
+}
 
-  // Get the first card to calculate dimensions.
-  const card = cards[0];
-  const cardStyle = window.getComputedStyle(card);
-  const cardWidth = card.offsetWidth;
-  const cardMargin = parseInt(cardStyle.marginLeft, 10) + parseInt(cardStyle.marginRight, 10);
-  const totalCardWidth = cardWidth + cardMargin;
+function escapeHtml(str = '') {
+  return str.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch] || ch));
+}
 
-  const coverflowWidth = coverflowEl.offsetWidth;
-  const offset = (coverflowWidth / 2) - (focusedIndex * totalCardWidth) - (cardWidth / 2);
-  track.style.transform = `translateX(${offset}px)`;
+function cardHTML(game, idx, cacheBust) {
+  const cover = game.hasThumbnail ? `${game.urlPath}thumbnail.png?v=${cacheBust}` : placeholderCard(game.name);
+  const source = game.sourceInfo?.source ? game.sourceInfo.source.toUpperCase() : 'LOCAL';
+  const safeName = escapeHtml(game.name);
+  return `
+    <article class="card" data-idx="${idx}">
+      <div class="thumb" data-play="${idx}">
+        <img src="${cover}" alt="${safeName} cover" loading="lazy">
+      </div>
+      <div class="meta">
+        <div class="row">
+          <div class="name" title="${safeName}">${safeName}</div>
+          <button class="kebab" data-menu="${idx}" aria-label="Open menu for ${safeName}">⋮</button>
+        </div>
+        <div class="row source">
+          <span>${source}</span>
+          <button class="play" data-play="${idx}" aria-label="Play ${safeName}">Play</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
 
-  cards.forEach((c, i) => {
-    c.classList.remove('left', 'right', 'focus', 'dim');
-    if (i === focusedIndex) {
-      c.classList.add('focus');
-    } else if (i < focusedIndex) {
-      c.classList.add('left', 'dim');
-    } else {
-      c.classList.add('right', 'dim');
+function renderGames({ preserveSelection = false } = {}) {
+  games = filterGames();
+  countEl.textContent = String(games.length);
+  gridEl.classList.toggle('list', viewSel?.value === 'list');
+
+  if (!games.length) {
+    gridEl.innerHTML = '<p class="no-games">No games found.</p>';
+    focusedIndex = 0;
+    selectedGameId = null;
+    return;
+  }
+
+  const cacheBust = Date.now();
+  gridEl.innerHTML = games.map((g, idx) => cardHTML(g, idx, cacheBust)).join('');
+
+  if (!preserveSelection || !selectedGameId) {
+    focusedIndex = Math.min(focusedIndex, games.length - 1);
+    selectedGameId = games[focusedIndex]?.id || games[0].id;
+  } else {
+    const idx = games.findIndex((g) => g.id === selectedGameId);
+    focusedIndex = idx === -1 ? 0 : idx;
+    selectedGameId = games[focusedIndex]?.id || selectedGameId;
+  }
+
+  applyFocus();
+}
+
+function applyFocus(scroll = false) {
+  const cards = Array.from(gridEl.querySelectorAll('.card'));
+  cards.forEach((card, idx) => {
+    const isFocus = idx === focusedIndex;
+    card.classList.toggle('focus', isFocus);
+    if (isFocus && scroll) {
+      try { card.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch {}
     }
   });
 }
 
-function focusIndex(i, open) {
+function getColumnCount() {
+  const card = gridEl.querySelector('.card');
+  if (!card) return 1;
+  const cardWidth = card.getBoundingClientRect().width || 1;
+  const gridWidth = gridEl.getBoundingClientRect().width || cardWidth;
+  return Math.max(1, Math.round(gridWidth / cardWidth));
+}
+
+function focusIndex(i, open, scroll = true) {
   if (!games.length) return;
   focusedIndex = Math.max(0, Math.min(games.length - 1, i));
-  updateCardTransforms();
+  selectedGameId = games[focusedIndex]?.id || null;
+  applyFocus(scroll);
   if (open) openGame(games[focusedIndex]);
 }
 
 function openGame(game) {
-  gameframe.src = game.urlPath + 'index.html';
+  if (!game) return;
+  const target = `${game.urlPath}index.html`;
+  gameframe.src = target;
+  currentGame = game;
+  selectedGameId = game.id;
   document.body.classList.add('playing');
   document.documentElement.classList.add('playing');
-  currentGame = game;
+  playerShell.classList.remove('hidden');
+  playerShell.classList.add('visible');
+  if (nowPlayingTitle) nowPlayingTitle.textContent = game.name;
   notifyGamepadManagerOfGameChange(game);
-  // Update exit button text with current game name
   exitGameBtn.textContent = `Exit ${game.name}`;
-  // Fullscreen the root so OSD (sibling overlay) remains visible in fullscreen
   const root = document.documentElement;
   const req = root.requestFullscreen?.bind(root)
     || document.body?.webkitRequestFullscreen?.bind(document.body)
@@ -168,7 +237,6 @@ function openGame(game) {
     || root.mozRequestFullScreen?.bind(root)
     || root.msRequestFullscreen?.bind(root);
   try { req && req(); } catch {}
-  // Bind key handlers inside iframe once loaded so Shift+ArrowDown works while focused in-game
   gameframe.addEventListener('load', bindIframeKeys, { once: true });
 }
 
@@ -176,104 +244,79 @@ function exitGame() {
   gameframe.src = 'about:blank';
   document.body.classList.remove('playing');
   document.documentElement.classList.remove('playing');
-  currentGame = null;
+  playerShell.classList.add('hidden');
+  playerShell.classList.remove('visible');
   notifyGamepadManagerOfGameChange(null);
-  // Reset exit button text
+  currentGame = null;
   exitGameBtn.textContent = 'Exit game';
-  const d = document;
-  if (document.fullscreenElement) {
-    const exit = document.exitFullscreen?.bind(document)
-      || d.webkitExitFullscreen?.bind(d)
-      || d.mozCancelFullScreen?.bind(d)
-      || d.msExitFullscreen?.bind(d);
-    try {
+  try {
+    if (document.fullscreenElement) {
+      const d = document;
+      const exit = d.exitFullscreen?.bind(d)
+        || d.webkitExitFullscreen?.bind(d)
+        || d.mozCancelFullScreen?.bind(d)
+        || d.msExitFullscreen?.bind(d);
       const p = exit && exit();
-      // Avoid unhandled rejection when not in fullscreen
       if (p && typeof p.catch === 'function') p.catch(() => {});
-    } catch {}
-  }
+    }
+  } catch {}
 }
 
-// Keyboard navigation and OSD
 function isOSDKey(e) {
   const k = e.key;
-  // Support ` and ~ and Backquote code (keyCode 192)
   return k === '`' || k === '~' || e.code === 'Backquote' || e.keyCode === 192;
 }
 
 const globalKeyHandler = (e) => {
-  if (e.key === 'ArrowLeft') { focusIndex(focusedIndex - 1, false); }
-  if (e.key === 'ArrowRight') { focusIndex(focusedIndex + 1, false); }
-  if ((e.key === 'Enter' || e.key === ' ') && !document.body.classList.contains('playing')) {
-    e.preventDefault();
-    focusIndex(focusedIndex, true); // Launch currently focused game
+  const playing = document.body.classList.contains('playing');
+  const tag = (e.target?.tagName || '').toLowerCase();
+  const isFormField = e.target?.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
+  if (!playing && !isFormField) {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); focusIndex(focusedIndex - 1, false, true); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); focusIndex(focusedIndex + 1, false, true); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); focusIndex(focusedIndex - getColumnCount(), false, true); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); focusIndex(focusedIndex + getColumnCount(), false, true); }
+    if ((e.key === 'Enter' || e.key === ' ') && !playing) {
+      e.preventDefault();
+      focusIndex(focusedIndex, true);
+    }
   }
-  // Open OSD in both launcher (Global OSD) and in-game (Game OSD)
   if (isOSDKey(e)) { e.preventDefault(); toggleOSD(true); }
-  if (e.key === 'Escape' && document.body.classList.contains('playing')) {
+  if (e.key === 'Escape' && playing) {
     exitGame();
   }
 };
 
-// Attach once at window level to avoid duplicate handling
 window.addEventListener('keydown', globalKeyHandler, { capture: true });
-
-// Recenter on resize
-window.addEventListener('resize', updateCardTransforms);
-
-// Gamepad handling is now done by gamepad-support.js
 
 function toggleOSD(show) {
   osd.classList.toggle('hidden', !show);
-  // Global menu when not playing a game
   const global = !document.body.classList.contains('playing');
   captureThumbBtn.style.display = global ? 'none' : '';
   exitGameBtn.style.display = global ? 'none' : '';
-  // Global-only options
   if (clearStorageBtn) clearStorageBtn.style.display = global ? '' : 'none';
   if (reloadPageBtn) reloadPageBtn.style.display = global ? '' : 'none';
-  // Title
+
   if (osdTitle) {
     osdTitle.textContent = global ? 'Global OSD' : `Game OSD (${currentGame?.name || 'Game'})`;
   }
-  // Inform the game iframe to show/hide cursor and block inputs when game OSD is open
+
+  recommendedButtonsEl.innerHTML = '';
   if (!global) {
-    // Render recommended buttons
-    recommendedButtonsEl.innerHTML = '';
     const recommended = getRecommendedButtonList(currentGame?.recommendedButtons);
     if (recommended.length) {
       for (const btn of recommended) {
-        const buttonEl = el('button', '', btn.label);
+        const buttonEl = document.createElement('button');
+        buttonEl.textContent = btn.label;
         buttonEl.addEventListener('click', () => {
-          // Game developers: To handle recommended button actions,
-          // listen for the 'message' event from the launcher.
-          /*
-          window.addEventListener('message', (ev) => {
-            // The launcher and game are same-origin, but checking is good practice.
-            if (ev.source !== window.parent) return;
-
-            const msg = ev.data;
-            if (msg && msg.cmg === 'map_button') {
-              console.log(`Received mapping for '${msg.mapsTo}' to element '#${msg.elementId}'`);
-
-              // Example: Find the element and simulate a click
-              const targetElement = document.getElementById(msg.elementId);
-              if (targetElement) {
-                // You can now trigger this element, for example:
-                // targetElement.click();
-                // Or map a gamepad button to it.
-              }
-            }
-          });
-          */
           try {
-            gameframe.contentWindow.postMessage({
+            gameframe.contentWindow?.postMessage({
               cmg: 'map_button',
               mapsTo: btn.mapsTo,
               elementId: btn.elementId,
             }, location.origin);
-          } catch (e) {
-            console.error('Failed to post message to game iframe', e);
+          } catch (err) {
+            console.error('Failed to post message to game iframe', err);
           }
           toggleOSD(false);
         });
@@ -287,12 +330,12 @@ function toggleOSD(show) {
         gameframe.contentWindow.postMessage({ cmg: 'input', blocked: !!show }, location.origin);
       }
     } catch {}
-  } else {
-    // Clear buttons when in global OSD
-    recommendedButtonsEl.innerHTML = '';
   }
 }
+
 osdClose.addEventListener('click', () => toggleOSD(false));
+playerOSDBtn?.addEventListener('click', () => toggleOSD(true));
+
 controllerConfigBtn.addEventListener('click', () => {
   if (window.openControllerConfig) {
     window.openControllerConfig();
@@ -301,8 +344,8 @@ controllerConfigBtn.addEventListener('click', () => {
   }
 });
 exitGameBtn.addEventListener('click', () => { exitGame(); toggleOSD(false); });
+playerExitBtn?.addEventListener('click', () => exitGame());
 
-// Global OSD actions
 if (clearStorageBtn) {
   clearStorageBtn.addEventListener('click', () => {
     if (confirm('Clear all localStorage for this launcher? This resets controller mappings and preferences.')) {
@@ -312,15 +355,10 @@ if (clearStorageBtn) {
   });
 }
 if (reloadPageBtn) {
-  reloadPageBtn.addEventListener('click', () => {
-    location.reload();
-  });
+  reloadPageBtn.addEventListener('click', () => { location.reload(); });
 }
 
-// Capture thumbnail.png from in-game canvas if possible
 captureThumbBtn.addEventListener('click', async () => {
-  // When in-game, prefer the currently running game to avoid
-  // mismatches if the coverflow focus moved while playing.
   const game = (document.body.classList.contains('playing') && currentGame) ? currentGame : games[focusedIndex];
   if (!game) return;
   try {
@@ -346,8 +384,7 @@ async function captureIframeCanvas(iframe) {
   if (!doc) return null;
 
   const canvases = Array.from(doc.querySelectorAll('canvas'));
-  // Prefer visible canvases, then pick the one with the largest pixel area
-  const visible = canvases.filter(c => (c.offsetWidth > 0 && c.offsetHeight > 0));
+  const visible = canvases.filter((c) => (c.offsetWidth > 0 && c.offsetHeight > 0));
   const pickFrom = visible.length ? visible : canvases;
   const target = pickFrom.sort((a, b) => (a.width * a.height) - (b.width * b.height)).pop();
 
@@ -355,27 +392,24 @@ async function captureIframeCanvas(iframe) {
     const w = target.width || target.offsetWidth;
     const h = target.height || target.offsetHeight;
     if (!w || !h) return null;
-    // Copy to an offscreen 2D canvas to normalize output and avoid directly reading WebGL buffer
     const off = document.createElement('canvas');
-    off.width = w; off.height = h;
+    off.width = w;
+    off.height = h;
     const ctx = off.getContext('2d');
     if (!ctx) return null;
     try {
       ctx.drawImage(target, 0, 0, w, h);
       return off.toDataURL('image/png');
     } catch (e) {
-      // Fallback: try direct toDataURL on the target
       try { return target.toDataURL('image/png'); } catch { /* continue to html2canvas */ }
     }
   }
 
-  // Fallback for non-canvas games: use html2canvas
   if (typeof html2canvas === 'function') {
     try {
       const canvas = await html2canvas(doc.body, {
         allowTaint: true,
         useCORS: true,
-        // Match iframe dimensions, otherwise it captures the whole page
         width: iframe.clientWidth,
         height: iframe.clientHeight,
         x: 0,
@@ -394,10 +428,30 @@ async function captureIframeCanvas(iframe) {
 }
 
 // Add Game (ZIP)
-addZipBtn.addEventListener('click', () => zipInput.click());
+addZipBtn?.addEventListener('click', () => addZipMenu?.classList.remove('hidden'));
+addZipMenu?.addEventListener('click', (e) => {
+  const actionEl = e.target.closest('[data-zip]');
+  if (!actionEl) {
+    if (e.target === addZipMenu) addZipMenu.classList.add('hidden');
+    return;
+  }
+  const action = actionEl.getAttribute('data-zip');
+  if (action === 'local') {
+    zipInput.click();
+  } else if (action === 'url') {
+    handleAddUrl();
+  }
+  addZipMenu.classList.add('hidden');
+});
+
 zipInput.addEventListener('change', async () => {
   const file = zipInput.files?.[0];
   if (!file) return;
+  await handleZipFile(file);
+  zipInput.value = '';
+});
+
+async function handleZipFile(file) {
   const name = prompt('Game name (folder-friendly):', file.name.replace(/\.zip$/i, '')) || 'game';
   const subdir = prompt('Game location: root, dist, or docs?', 'root') || 'root';
   const form = new FormData();
@@ -407,15 +461,38 @@ zipInput.addEventListener('change', async () => {
   const res = await fetch('/api/add-game/from-zip', { method: 'POST', body: form });
   if (res.ok) {
     const data = await res.json();
+    selectedGameId = data.id;
     await fetchGames();
     const idx = games.findIndex((g) => g.id === data.id);
-    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
-    alert(`Game "${name}" added successfully! Click on it to launch.`);
+    focusIndex(idx === -1 ? 0 : idx, false);
+    alert(`Game "${name}" added successfully! Click Play to launch.`);
   } else {
     alert('Upload failed');
   }
-  zipInput.value = '';
-});
+}
+
+async function handleAddUrl() {
+  const url = prompt('Game ZIP URL:');
+  if (!url) return;
+  const name = prompt('Game name (optional):', '') || undefined;
+  const subdir = prompt('Game location: root, dist, or docs?', 'root') || 'root';
+  const res = await fetch('/api/add-game/from-url', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url, subdir, name }),
+  });
+  if (res.ok) {
+    const data = await res.json();
+    selectedGameId = data.id;
+    await fetchGames();
+    const idx = games.findIndex((g) => g.id === data.id);
+    focusIndex(idx === -1 ? 0 : idx, false);
+    const gameName = name || url.split('/').pop()?.replace(/\.zip$/, '') || 'game';
+    alert(`Game "${gameName}" added successfully! Click Play to launch.`);
+  } else {
+    alert('Download failed');
+  }
+}
 
 // Add Game (GitHub)
 addGithubBtn.addEventListener('click', async () => {
@@ -431,57 +508,58 @@ addGithubBtn.addEventListener('click', async () => {
   });
   if (res.ok) {
     const data = await res.json();
+    selectedGameId = data.id;
     await fetchGames();
     const idx = games.findIndex((g) => g.id === data.id);
-    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
+    focusIndex(idx === -1 ? 0 : idx, false);
     const gameName = name || repo.split('/').pop() || 'game';
-    alert(`Game "${gameName}" added successfully! Click on it to launch.`);
+    alert(`Game "${gameName}" added successfully! Click Play to launch.`);
   } else {
     alert('Download failed');
   }
 });
 
-// Add Game (URL)
-addUrlBtn.addEventListener('click', async () => {
-  const url = prompt('Game ZIP URL:');
-  if (!url) return;
-  const name = prompt('Game name (optional):', '') || undefined;
-  const subdir = prompt('Game location: root, dist, or docs?', 'root') || 'root';
-  const res = await fetch('/api/add-game/from-url', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url, subdir, name }),
-  });
-  if (res.ok) {
-    const data = await res.json();
-    await fetchGames();
-    const idx = games.findIndex((g) => g.id === data.id);
-    focusIndex(idx === -1 ? 0 : idx, false); // Focus but don't auto-launch
-    const gameName = name || url.split('/').pop()?.replace(/\.zip$/, '') || 'game';
-    alert(`Game "${gameName}" added successfully! Click on it to launch.`);
-  } else {
-    alert('Download failed');
+// Grid interactions
+gridEl.addEventListener('click', (e) => {
+  const play = e.target.closest('[data-play]');
+  if (play) {
+    const raw = Number(play.getAttribute('data-play'));
+    const idx = Number.isFinite(raw) ? raw : 0;
+    focusIndex(idx, true);
+    return;
+  }
+  const menu = e.target.closest('[data-menu]');
+  if (menu) {
+    const raw = Number(menu.getAttribute('data-menu'));
+    const idx = Number.isFinite(raw) ? raw : 0;
+    focusIndex(idx, false);
+    showGameMenu(games[Math.max(0, Math.min(games.length - 1, idx))]);
+    return;
+  }
+  const card = e.target.closest('.card');
+  if (card) {
+    const raw = Number(card.getAttribute('data-idx'));
+    const idx = Number.isFinite(raw) ? raw : 0;
+    focusIndex(idx, true);
   }
 });
 
-// Game menu functions
+qInput?.addEventListener('input', () => renderGames({ preserveSelection: true }));
+sortSel?.addEventListener('change', () => renderGames({ preserveSelection: true }));
+viewSel?.addEventListener('change', () => renderGames({ preserveSelection: true }));
+
 function showGameMenu(game) {
   if (!game) return;
-
-  // Capitalize the game name properly
   const capitalizedName = game.name
     .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
 
   gameMenuTitle.textContent = capitalizedName;
   gameMenu.classList.remove('hidden');
-
-  // Store the current game for actions
   gameMenu.dataset.gameId = game.id;
-  gameMenu.dataset.gameIndex = games.indexOf(game);
+  gameMenu.dataset.gameIndex = games.indexOf(game).toString();
 
-  // Show/hide update button
   const isUpdatable = game.sourceInfo && (game.sourceInfo.source === 'github' || game.sourceInfo.source === 'url');
   updateGameBtn.style.display = isUpdatable ? '' : 'none';
 }
@@ -492,25 +570,12 @@ function hideGameMenu() {
   delete gameMenu.dataset.gameIndex;
 }
 
-async function deleteGame(gameId, gameIndex) {
-  if (!confirm('Are you sure you want to delete this game? This action cannot be undone.')) {
-    return;
-  }
-
+async function deleteGame(gameId) {
+  if (!confirm('Are you sure you want to delete this game? This action cannot be undone.')) return;
   try {
     const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
     if (res.ok) {
-      // Remove from local games array
-      games.splice(gameIndex, 1);
-
-      // Adjust focused index if necessary
-      if (focusedIndex >= games.length) {
-        focusedIndex = Math.max(0, games.length - 1);
-      }
-
-      // Re-render the coverflow
-      renderCoverflow();
-
+      await fetchGames();
       alert('Game deleted successfully!');
     } else {
       throw new Error('Delete failed');
@@ -521,7 +586,6 @@ async function deleteGame(gameId, gameIndex) {
   }
 }
 
-// Game menu event handlers
 updateGameBtn.addEventListener('click', async () => {
   const gameId = gameMenu.dataset.gameId;
   if (!gameId) return;
@@ -530,11 +594,9 @@ updateGameBtn.addEventListener('click', async () => {
     const res = await fetch(`/api/games/${gameId}/update`, { method: 'POST' });
     if (res.ok) {
       alert('Game updated successfully!');
-      // Optional: reload the game if it's currently being played
       if (currentGame && currentGame.id === gameId) {
-        gameframe.src = gameframe.src; // This reloads the iframe
+        gameframe.src = gameframe.src;
       }
-      // Refresh thumbnail in case it changed
       await fetchGames();
     } else {
       const errorText = await res.text();
@@ -550,60 +612,49 @@ updateGameBtn.addEventListener('click', async () => {
 
 deleteGameBtn.addEventListener('click', () => {
   const gameId = gameMenu.dataset.gameId;
-  const gameIndex = parseInt(gameMenu.dataset.gameIndex);
-  if (gameId && gameIndex >= 0) {
-    deleteGame(gameId, gameIndex);
-  }
+  if (gameId) deleteGame(gameId);
   hideGameMenu();
 });
 
-cancelBtn.addEventListener('click', () => {
-  hideGameMenu();
-});
-
-// Close menu when clicking outside
+cancelBtn.addEventListener('click', hideGameMenu);
 gameMenu.addEventListener('click', (e) => {
-  if (e.target === gameMenu) {
-    hideGameMenu();
-  }
+  if (e.target === gameMenu) hideGameMenu();
 });
-
-// Initial load
-fetchGames();
 
 // Expose to gamepad system
 window.focusIndex = focusIndex;
 Object.defineProperty(window, 'focusedIndex', {
   get: () => focusedIndex,
-  set: (value) => { focusedIndex = value; }
+  set: (value) => { focusedIndex = value; },
 });
 window.toggleOSD = toggleOSD;
 window.showGameMenu = showGameMenu;
+window.hideGameMenu = hideGameMenu;
 Object.defineProperty(window, 'games', {
   get: () => games,
-  set: (value) => { games = value; }
+  set: (value) => { games = value; },
 });
 Object.defineProperty(window, 'currentGame', {
   get: () => currentGame,
-  set: () => { /* ignore external mutation attempts */ }
+  set: () => { /* ignore external mutation attempts */ },
 });
 window.getCurrentGame = () => currentGame;
 
-// Attach Shift+ArrowDown handler inside iframe (same-origin games)
 function bindIframeKeys() {
   try {
-    const w = gameframe.contentWindow; const d = gameframe.contentDocument;
+    const w = gameframe.contentWindow;
+    const d = gameframe.contentDocument;
     if (!w || !d) return;
     try {
       const docEl = d.documentElement;
-      const bodyEl = d.body || d.querySelector("body");
+      const bodyEl = d.body || d.querySelector('body');
       if (docEl) {
-        docEl.style.overflow = "hidden";
-        docEl.style.height = "100%";
+        docEl.style.overflow = 'hidden';
+        docEl.style.height = '100%';
       }
       if (bodyEl) {
-        bodyEl.style.overflow = "hidden";
-        bodyEl.style.height = "100%";
+        bodyEl.style.overflow = 'hidden';
+        bodyEl.style.height = '100%';
       }
     } catch {}
     const handler = (e) => {
@@ -615,7 +666,6 @@ function bindIframeKeys() {
         exitGame();
       }
     };
-    // Capture phase increases chance to catch before game handlers stopPropagation
     d.addEventListener('keydown', handler, { capture: true });
     w.addEventListener('keydown', handler, { capture: true });
   } catch {
@@ -623,10 +673,8 @@ function bindIframeKeys() {
   }
 }
 
-// Listen for OSD postMessage from injected script inside game pages
 window.addEventListener('message', (ev) => {
   if (!ev.data) return;
-  // Accept only from the active gameframe
   if (ev.source !== gameframe.contentWindow) return;
   const msg = ev.data;
   if (msg.cmg === 'osd') {
@@ -635,21 +683,15 @@ window.addEventListener('message', (ev) => {
   }
 });
 
-// Heartbeat to keep the parent process alive.
-// When the browser window is closed, this will stop, and the Deno server
-// will exit after a timeout. This is only active in the compiled app.
+// Heartbeat to keep the parent process alive
 (function startHeartbeat() {
-  // Check for a marker injected by the server to know if we are in the launcher app
   const isLauncher = window.__CMG_LAUNCHER__ || (window.__CMG__ && window.__CMG__.launcher);
   if (!isLauncher && !location.port) {
-    // A simple heuristic: if not explicitly marked as launcher and not on a dev port,
-    // assume we are not in the app environment where a heartbeat is needed.
     return;
   }
 
-  const interval = 3000; // 3 seconds
+  const interval = 3000;
   setInterval(async () => {
-    // Pause when page is not visible to avoid unnecessary background work
     if (document.hidden) return;
     try {
       await fetch('/api/heartbeat', { method: 'POST', body: '{}' });
@@ -658,3 +700,6 @@ window.addEventListener('message', (ev) => {
     }
   }, interval);
 })();
+
+// Initial load
+fetchGames();

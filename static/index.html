@@ -4,74 +4,106 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeMonkey Games Launcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div style="background-color: #D5D5D8; height: 15%; position: relative;">
-    <div class="box">
-      <div class="line"></div>
-      <div class="line"></div>
+  <div id="player-shell" class="player-shell hidden" aria-live="polite">
+    <div class="player-chrome">
+      <div class="now-playing">
+        <span class="pill">Now playing</span>
+        <span id="now-playing-title"></span>
+      </div>
+      <div class="player-actions">
+        <button id="player-osd" class="ghost">OSD (`)</button>
+        <button id="player-exit" class="ghost">Exit</button>
+      </div>
     </div>
+    <iframe id="gameframe" title="Game" allowfullscreen></iframe>
   </div>
 
   <main>
-    <section class="coverflow" id="coverflow" aria-label="Game library"></section>
-    <section class="player">
-      <iframe id="gameframe" title="Game" allowfullscreen></iframe>
-    </section>
+    <div class="controls">
+      <input id="q" class="search" type="search" placeholder="Search games…" aria-label="Search games" />
+      <select id="sort" class="select" aria-label="Sort games">
+        <option value="az">A → Z</option>
+        <option value="za">Z → A</option>
+      </select>
+      <select id="view" class="select" aria-label="Change view">
+        <option value="grid">Grid</option>
+        <option value="list">List</option>
+      </select>
+    </div>
+
+    <div id="grid" class="grid" aria-live="polite"></div>
+    <div class="status"><span id="count">0</span> games</div>
   </main>
 
-  <div style="background-color: #D5D5D8; height: 12%; position: relative;">
-    <img src="https://raw.githubusercontent.com/easierbycode/nes/master/nes-logo.png" id="logo">
-  
-    <div class="box"></div>
-  </div>
+  <div class="bar">
+    <div class="bar-top">
+      <img src="https://raw.githubusercontent.com/easierbycode/nes/master/nes-logo.png" id="logo" alt="NES logo" />
+      <div class="box"></div>
+    </div>
 
-  <div style="background-color: #88848B; height: 3%; position: relative;">
-    <div class="box">
-      <div class="line"></div>
+    <div class="bar-mid">
+      <div class="box">
+        <div class="line"></div>
+      </div>
+    </div>
+
+    <div class="bar-bottom">
+      <div class="buttons">
+        <button id="add-zip">Add Game (ZIP)</button>
+        <button id="add-github">Add Game (GitHub)</button>
+      </div>
+      <div class="box">
+        <div class="line"></div>
+      </div>
     </div>
   </div>
 
-  <div style="background-color: #88848B; height: 3%; position: relative;">
-    <div class="buttons">
-      <button id="add-zip">Add Game (ZIP)</button>
-      <button id="add-github">Add Game (GitHub)</button>
-      <button id="add-url">Add Game (URL)</button>
-    </div>
-
-    <div class="box">
-      <div class="line"></div>
-    </div>
-  </div>
-
-  <div id="osd" class="osd hidden" role="dialog" aria-modal="true">
-    <div class="osd-panel">
+  <div id="osd" class="osd overlay hidden" role="dialog" aria-modal="true">
+    <div class="osd-panel pad">
       <h2 id="osd-title">OSD</h2>
-      <div id="recommended-buttons"></div>
-      <button id="capture-thumb">Capture thumbnail.png</button>
-      <button id="controller-config">Controller Layout</button>
-      <button id="clear-storage">Clear Local Storage</button>
-      <button id="reload-page">Reload</button>
-      <button id="exit-game">Exit game</button>
-      <button id="osd-close">Cancel</button>
+      <div id="recommended-buttons" class="recommended"></div>
+      <button id="capture-thumb" class="item">Capture thumbnail.png</button>
+      <button id="controller-config" class="item">Controller Layout</button>
+      <button id="clear-storage" class="item">Clear Local Storage</button>
+      <button id="reload-page" class="item">Reload</button>
+      <button id="exit-game" class="item item--danger">Exit game</button>
+      <button id="osd-close" class="item ghost">Cancel</button>
     </div>
   </div>
 
-  <div id="game-menu" class="game-menu hidden" role="dialog" aria-modal="true">
-    <div class="game-menu-panel">
+  <div id="game-menu" class="game-menu overlay hidden" role="dialog" aria-modal="true">
+    <div class="game-menu-panel pad">
       <h2 id="game-menu-title">Game Menu</h2>
-      <button id="update-game-btn">Update Game</button>
-      <button id="delete-game-btn">Delete Game</button>
-      <button id="cancel-btn">Cancel</button>
+      <button id="update-game-btn" class="item">Update Game</button>
+      <button id="delete-game-btn" class="item item--danger">Delete Game</button>
+      <button id="cancel-btn" class="item ghost">Cancel</button>
+    </div>
+  </div>
+
+  <div id="add-zip-menu" class="overlay hidden" role="dialog" aria-modal="true">
+    <div class="pad">
+      <h3>Add Game (ZIP)</h3>
+      <div class="list">
+        <button class="item" data-zip="local">
+          <div>📁 Choose Local File</div>
+          <div class="hint">Upload a ZIP file from your computer</div>
+        </button>
+        <button class="item" data-zip="url">
+          <div>🔗 Enter URL</div>
+          <div class="hint">Download ZIP from a URL</div>
+        </button>
+        <button class="item ghost" data-zip="cancel">Cancel</button>
+      </div>
     </div>
   </div>
 
   <input type="file" id="zip-input" accept=".zip" hidden />
-
-  <template id="cover-card">
-    <div class="card" tabindex="0"></div>
-  </template>
 
   <script src="/static/gamepad-support.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
