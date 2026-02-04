@@ -375,8 +375,8 @@ captureThumbBtn.addEventListener('click', async () => {
       throw new Error('Upload failed');
     }
   } catch (err) {
-    console.error(err);
-    alert('Could not capture thumbnail.');
+    console.error('Thumbnail capture error:', err);
+    alert('Could not capture thumbnail. Check console for details.');
   }
 });
 
@@ -384,6 +384,7 @@ async function captureIframeCanvas(iframe) {
   const doc = iframe.contentDocument;
   if (!doc) return null;
 
+  // Try canvas-based capture first
   const canvases = Array.from(doc.querySelectorAll('canvas'));
   const visible = canvases.filter((c) => (c.offsetWidth > 0 && c.offsetHeight > 0));
   const pickFrom = visible.length ? visible : canvases;
@@ -402,10 +403,19 @@ async function captureIframeCanvas(iframe) {
       ctx.drawImage(target, 0, 0, w, h);
       return off.toDataURL('image/png');
     } catch (e) {
-      try { return target.toDataURL('image/png'); } catch { /* continue to html2canvas */ }
+      try { return target.toDataURL('image/png'); } catch { /* continue to div capture */ }
     }
   }
 
+  // For div-based games: inject html2canvas into iframe and capture there
+  try {
+    const result = await captureIframeWithHtml2Canvas(iframe);
+    if (result) return result;
+  } catch (e) {
+    console.error('Iframe html2canvas capture failed:', e);
+  }
+
+  // Final fallback: try parent window's html2canvas on iframe body
   if (typeof html2canvas === 'function') {
     try {
       const canvas = await html2canvas(doc.body, {
@@ -420,12 +430,74 @@ async function captureIframeCanvas(iframe) {
       });
       return canvas.toDataURL('image/png');
     } catch (e) {
-      console.error('html2canvas failed:', e);
+      console.error('html2canvas fallback failed:', e);
       return null;
     }
   }
 
   return null;
+}
+
+// Inject html2canvas into iframe and capture div-based game content
+async function captureIframeWithHtml2Canvas(iframe) {
+  const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
+  if (!doc || !win) return null;
+
+  // Check if html2canvas is already loaded in the iframe
+  if (typeof win.html2canvas !== 'function') {
+    // Inject html2canvas script into iframe
+    await new Promise((resolve, reject) => {
+      const script = doc.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      script.onload = resolve;
+      script.onerror = reject;
+      doc.head.appendChild(script);
+    });
+  }
+
+  // Wait for html2canvas to be available
+  let attempts = 0;
+  while (typeof win.html2canvas !== 'function' && attempts < 50) {
+    await new Promise(r => setTimeout(r, 100));
+    attempts++;
+  }
+
+  if (typeof win.html2canvas !== 'function') {
+    throw new Error('html2canvas failed to load in iframe');
+  }
+
+  // Find the best capture target: game container div or body
+  let captureTarget = doc.body;
+
+  // Look for common game container patterns
+  const gameContainerSelectors = [
+    '#game', '#game-container', '#gameContainer', '#game-wrapper',
+    '.game', '.game-container', '.gameContainer', '.game-wrapper',
+    '#app', '#root', '#main', 'main',
+    '[data-game]', '[data-game-container]'
+  ];
+
+  for (const selector of gameContainerSelectors) {
+    const el = doc.querySelector(selector);
+    if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+      captureTarget = el;
+      break;
+    }
+  }
+
+  // Capture using iframe's html2canvas
+  const canvas = await win.html2canvas(captureTarget, {
+    allowTaint: true,
+    useCORS: true,
+    backgroundColor: null,
+    width: captureTarget.scrollWidth || iframe.clientWidth,
+    height: captureTarget.scrollHeight || iframe.clientHeight,
+    scrollX: 0,
+    scrollY: 0,
+  });
+
+  return canvas.toDataURL('image/png');
 }
 
 // Add Game (ZIP)
