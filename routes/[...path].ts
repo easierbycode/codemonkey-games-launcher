@@ -3,6 +3,7 @@ import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
 import { extname, join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { GAMES_DIR, ROOT } from "../lib/utils.ts";
 import { GAME_GENIE_HTML } from "../lib/game-genie-html.ts";
+import { VOXEL_MOD_JS } from "../lib/voxel-mod-js.ts";
 
 const injections = {
   css: `\n<style>
@@ -108,7 +109,7 @@ const injections = {
         if (document.getElementById('cmg-mod-voxel-3d')) return;
         var s = document.createElement('script');
         s.id = 'cmg-mod-voxel-3d';
-        s.src = '/static/mods/voxel-3d.js';
+        s.src = '/mods/voxel-3d.js';
         s.defer = true;
         (document.head || document.documentElement).appendChild(s);
       }
@@ -219,6 +220,13 @@ export const handler: Handlers = {
     if (pathname === "/game-genie" || pathname === "/game-genie/" || pathname.startsWith("/game-genie/")) {
       return new Response(GAME_GENIE_HTML, {
         headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // --- Voxel mod script (served inline so it doesn't depend on disk assets) ---
+    if (pathname === "/mods/voxel-3d.js") {
+      return new Response(VOXEL_MOD_JS, {
+        headers: { "content-type": "text/javascript; charset=utf-8" },
       });
     }
 
