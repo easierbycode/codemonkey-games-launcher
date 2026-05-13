@@ -98,6 +98,25 @@ const injections = {
       } catch(_){/* ignore */}
     } catch(_){/* ignore */}
   })();</script>\n`,
+  voxelMod: `\n<script>(function(){
+    try {
+      var path = (location && location.pathname) || '';
+      if (/(^|\\/)(games\\/)?game-genie(\\/|$)/i.test(path)) return;
+      var KEY = 'cmg_mod_voxel_3d';
+      function load(){
+        if (document.getElementById('cmg-mod-voxel-3d')) return;
+        var s = document.createElement('script');
+        s.id = 'cmg-mod-voxel-3d';
+        s.src = '/static/mods/voxel-3d.js';
+        s.defer = true;
+        (document.head || document.documentElement).appendChild(s);
+      }
+      try { if (localStorage.getItem(KEY) === '1') load(); } catch(_){/* ignore */}
+      window.addEventListener('storage', function(e){
+        try { if (e && e.key === KEY && e.newValue === '1') load(); } catch(_){/* ignore */}
+      });
+    } catch(_){/* ignore */}
+  })();</script>\n`,
   gamepadBlock: `\n<script>(function(){
     try {
       var __cmg_input_blocked = false;
