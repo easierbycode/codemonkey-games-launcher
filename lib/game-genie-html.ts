@@ -1,4 +1,4 @@
-<!doctype html>
+export const GAME_GENIE_HTML = String.raw`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -253,3 +253,4 @@
   </script>
 </body>
 </html>
+`;

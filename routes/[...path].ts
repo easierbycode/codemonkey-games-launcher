@@ -2,6 +2,7 @@ import { HandlerContext, Handlers } from "$fresh/server.ts";
 import { contentType } from "https://deno.land/std@0.224.0/media_types/mod.ts";
 import { extname, join } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { GAMES_DIR, ROOT } from "../lib/utils.ts";
+import { GAME_GENIE_HTML } from "../lib/game-genie-html.ts";
 
 const injections = {
   css: `\n<style>
@@ -213,6 +214,13 @@ export const handler: Handlers = {
   async GET(req: Request, _ctx: HandlerContext) {
     const url = new URL(req.url);
     const pathname = url.pathname;
+
+    // --- Game Genie (built-in virtual game, served inline) ---
+    if (pathname === "/game-genie" || pathname === "/game-genie/" || pathname.startsWith("/game-genie/")) {
+      return new Response(GAME_GENIE_HTML, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
 
     // --- Game serving logic ---
     const serveGameFile = async (gameId: string, relPath: string, isIndex: boolean) => {
