@@ -85,11 +85,23 @@ const DEFAULT_CONFIGS: Record<string, { recommendedButtons: RecommendedButton[] 
   },
 };
 
+const BUILTIN_GAMES: GameEntry[] = [
+  {
+    id: "game-genie",
+    name: "game genie",
+    path: "",
+    urlPath: "/static/game-genie/",
+    launchPath: "/static/game-genie/",
+    hasThumbnail: false,
+  },
+];
+
 export async function listGames(): Promise<GameEntry[]> {
   const entries: GameEntry[] = [];
   for await (const dirEntry of Deno.readDir(GAMES_DIR)) {
     if (!dirEntry.isDirectory) continue;
     const id = dirEntry.name;
+    if (BUILTIN_GAMES.some((b) => b.id === id)) continue;
     const fsPath = join(GAMES_DIR, id);
     const thumbnailPath = join(fsPath, "thumbnail.png");
     const metadataPath = join(fsPath, "codemonkey.json");
@@ -131,6 +143,7 @@ export async function listGames(): Promise<GameEntry[]> {
       recommendedButtons: metadata.recommendedButtons,
     });
   }
+  entries.push(...BUILTIN_GAMES);
   entries.sort((a, b) => a.name.localeCompare(b.name));
   return entries;
 }
