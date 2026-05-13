@@ -90,8 +90,8 @@ const BUILTIN_GAMES: GameEntry[] = [
     id: "game-genie",
     name: "game genie",
     path: "",
-    urlPath: "/static/game-genie/",
-    launchPath: "/static/game-genie/",
+    urlPath: "/game-genie/",
+    launchPath: "/game-genie/",
     hasThumbnail: false,
   },
 ];
