@@ -64,8 +64,8 @@
       return;
     }
 
-    const prevSourceVisibility = sourceCanvas.style.visibility;
-    sourceCanvas.style.visibility = 'hidden';
+    const prevSourceOpacity = sourceCanvas.style.opacity;
+    sourceCanvas.style.opacity = '0';
 
     const overlay = document.createElement('canvas');
     overlay.id = 'cmg-voxel-overlay';
@@ -175,7 +175,7 @@
       try { geom.dispose(); } catch (_) { /* ignore */ }
       try { mat.dispose(); } catch (_) { /* ignore */ }
       try { overlay.remove(); } catch (_) { /* ignore */ }
-      try { sourceCanvas.style.visibility = prevSourceVisibility; } catch (_) { /* ignore */ }
+      try { sourceCanvas.style.opacity = prevSourceOpacity; } catch (_) { /* ignore */ }
       teardown = null;
       window.__cmgVoxel3dInstalled = false;
     };
