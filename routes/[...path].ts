@@ -284,6 +284,12 @@ export const handler: Handlers = {
       return new Response("Not Found", { status: 404 });
     }
 
+    const isHtmlEntry = (relPath: string, urlPath: string) => {
+      if (relPath === "" || urlPath.endsWith("/")) return true;
+      const lower = relPath.toLowerCase();
+      return lower.endsWith(".html") || lower.endsWith(".htm");
+    };
+
     // --- Game alias routing: /<gameId>/... -> /games/<gameId>/...
     const segs = pathname.replace(/^\/+/, "").split("/");
     const firstSeg = segs[0] || "";
@@ -293,8 +299,9 @@ export const handler: Handlers = {
         const st = await Deno.stat(join(GAMES_DIR, firstSeg));
         if (st.isDirectory) {
           const relPath = segs.slice(1).join("/");
-          const isIndex = relPath === "" || pathname.endsWith("/");
-          return await serveGameFile(firstSeg, isIndex ? "index.html" : relPath, isIndex);
+          const isIndex = isHtmlEntry(relPath, pathname);
+          const fileToServe = relPath === "" || pathname.endsWith("/") ? "index.html" : relPath;
+          return await serveGameFile(firstSeg, fileToServe, isIndex);
         }
       } catch { /* not a game folder */ }
     }
@@ -309,8 +316,9 @@ export const handler: Handlers = {
           const st = await Deno.stat(join(GAMES_DIR, gameId));
           if (st.isDirectory) {
             const relPath = segs.slice(1).join("/");
-            const isIndex = relPath === "" || pathname.endsWith("/");
-            return await serveGameFile(gameId, isIndex ? "index.html" : relPath, isIndex);
+            const isIndex = isHtmlEntry(relPath, pathname);
+            const fileToServe = relPath === "" || pathname.endsWith("/") ? "index.html" : relPath;
+            return await serveGameFile(gameId, fileToServe, isIndex);
           }
         } catch { /* not a game folder */ }
       }
