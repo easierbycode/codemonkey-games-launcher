@@ -304,13 +304,14 @@ function renderPage(latest: Latest | null, detected: PlatformId | null): string 
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Download · CodeMonkey Games Launcher</title>
 <meta name="description" content="Download the CodeMonkey Games Launcher for macOS, Windows, and Linux/Kazeta. Always the latest version." />
+<meta name="theme-color" content="#d8d8d8" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#070912; --bg2:#0e1326; --fg:#eaf0ff; --muted:#8b95b8;
-    --accent:#ff3d7f; --accent2:#22d3ee; --card:#11162b; --line:#222a47;
+    --bg:#d8d8d8; --bg2:#c4c8d1; --fg:#1b1f2a; --muted:#5b6172;
+    --accent:#e0266a; --accent2:#0b7f9b; --card:#ffffff; --card2:#eef0f4; --line:#cdd0d9;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -318,15 +319,15 @@ function renderPage(latest: Latest | null, detected: PlatformId | null): string 
     font-family:'Orbitron',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
     color:var(--fg); min-height:100vh;
     background:
-      radial-gradient(1100px 600px at 50% -10%, rgba(34,211,238,.14), transparent 60%),
-      radial-gradient(900px 500px at 85% 110%, rgba(255,61,127,.16), transparent 60%),
-      linear-gradient(180deg,var(--bg),var(--bg2));
+      radial-gradient(1100px 600px at 50% -10%, rgba(11,127,155,.12), transparent 60%),
+      radial-gradient(900px 500px at 85% 110%, rgba(224,38,106,.10), transparent 60%),
+      radial-gradient(150% 125% at 50% -10%, var(--bg) 0%, var(--bg2) 75%);
     display:flex; flex-direction:column; align-items:center;
     padding:48px 20px 64px;
   }
   .wrap{width:100%;max-width:920px}
   header{text-align:center;margin-bottom:40px}
-  .logo{height:64px;width:auto;image-rendering:pixelated;margin-bottom:18px;filter:drop-shadow(0 0 18px rgba(34,211,238,.45))}
+  .logo{height:64px;width:auto;image-rendering:pixelated;margin-bottom:18px;filter:drop-shadow(0 0 16px rgba(11,127,155,.35))}
   h1{
     font-weight:900;letter-spacing:.04em;margin:0 0 6px;
     font-size:clamp(28px,5vw,46px);line-height:1.05;
@@ -335,17 +336,18 @@ function renderPage(latest: Latest | null, detected: PlatformId | null): string 
   }
   .tag{color:var(--muted);font-size:14px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
   .metaline{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;color:var(--muted);font-size:13px;flex-wrap:wrap}
-  .pill{background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.45);color:var(--accent2);
+  .pill{background:rgba(11,127,155,.12);border:1px solid rgba(11,127,155,.45);color:var(--accent2);
         padding:3px 12px;border-radius:999px;font-weight:700;letter-spacing:.08em;font-size:12px}
   .meta-dot{opacity:.5}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:8px}
   .card{
-    position:relative;background:linear-gradient(180deg,var(--card),#0c1124);
+    position:relative;background:linear-gradient(180deg,var(--card),var(--card2));
     border:1px solid var(--line);border-radius:16px;padding:26px 22px 24px;text-align:center;
+    box-shadow:0 1px 2px rgba(16,18,33,.05),0 10px 30px -18px rgba(16,18,33,.25);
     transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease;
   }
-  .card:hover{transform:translateY(-3px);border-color:rgba(34,211,238,.5)}
-  .card.recommended{border-color:var(--accent);box-shadow:0 0 0 1px rgba(255,61,127,.35),0 18px 50px -20px rgba(255,61,127,.6)}
+  .card:hover{transform:translateY(-3px);border-color:rgba(11,127,155,.55);box-shadow:0 1px 2px rgba(16,18,33,.05),0 16px 40px -20px rgba(11,127,155,.4)}
+  .card.recommended{border-color:var(--accent);box-shadow:0 0 0 1px rgba(224,38,106,.3),0 18px 50px -22px rgba(224,38,106,.45)}
   .card.disabled{opacity:.6}
   .badge{
     position:absolute;top:-11px;left:50%;transform:translateX(-50%);
@@ -359,18 +361,18 @@ function renderPage(latest: Latest | null, detected: PlatformId | null): string 
     display:inline-flex;align-items:center;gap:8px;justify-content:center;
     width:100%;padding:13px 16px;border-radius:10px;text-decoration:none;font-weight:800;
     letter-spacing:.06em;font-size:14px;cursor:pointer;
-    background:linear-gradient(90deg,var(--accent2),#3b82f6);color:#03121a;
-    border:none;transition:filter .15s ease,transform .1s ease;
+    background:linear-gradient(90deg,var(--accent2),#2563eb);color:#fff;
+    border:none;text-shadow:0 1px 1px rgba(0,0,0,.18);transition:filter .15s ease,transform .1s ease;
   }
-  .btn:hover{filter:brightness(1.1)}
+  .btn:hover{filter:brightness(1.08)}
   .btn:active{transform:scale(.98)}
-  .btn-muted{background:#1b2240;color:var(--muted)}
+  .btn-muted{background:#e4e6ec;color:var(--muted);text-shadow:none}
   .size{font-size:11px;opacity:.8;font-weight:700}
   .alts{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
   .alt{color:var(--muted);font-size:11px;text-decoration:none;border:1px solid var(--line);
        padding:5px 10px;border-radius:8px;font-weight:700;letter-spacing:.04em}
   .alt:hover{color:var(--fg);border-color:var(--accent2)}
-  .empty{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:34px;text-align:center;color:var(--muted)}
+  .empty{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:34px;text-align:center;color:var(--muted);box-shadow:0 10px 30px -18px rgba(16,18,33,.25)}
   .empty .btn{width:auto;display:inline-flex;margin-top:10px}
   footer{margin-top:42px;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.04em}
   footer a{color:var(--accent2);text-decoration:none}
