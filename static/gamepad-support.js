@@ -25,6 +25,11 @@ class GamepadManager {
     this.lastActionTimestamp = 0;
     this.actionCooldown = 250; // Milliseconds
 
+    // Deadzone for treating an analog axis / encoded hat as a digital D-pad
+    // press. Matches cmg's PAD_DEADZONE so SNES → USB adapters that report the
+    // D-pad on an axis or hat (instead of buttons 12-15) still register.
+    this.PAD_DEADZONE = 0.55;
+
     // Detect Gamepad Button state
     this._detecting = false; // { ui: { selectEl, buttonEl, hintEl } } | false
     this._detectSnapshot = {}; // controllerIndex -> [bool]
@@ -458,6 +463,37 @@ class GamepadManager {
       this.buttonState[controllerIndex].dpadRight = false;
     }
 
+    // Shoulder navigation — L = previous game (left), R = next game (right).
+    // Mirrors cmg's L/R fallback so a SNES → USB pad whose D-pad isn't
+    // recognized as buttons 12-15 can still move through the list. Skipped while
+    // SELECT is held so the SELECT + R chord stays reserved for the OSD trigger.
+    const shoulderMapping = mapping.shoulder || {};
+    const selectHeld = controller.buttons[mapping.special?.select?.gamepadButton]?.pressed;
+    const rShoulderBtn = shoulderMapping.rightShoulder?.gamepadButton;
+    const lShoulderBtn = shoulderMapping.leftShoulder?.gamepadButton;
+
+    if (rShoulderBtn != null && controller.buttons[rShoulderBtn]?.pressed &&
+        !prevButtonState.rShoulderNav) {
+      if (!selectHeld) {
+        console.log('R shoulder pressed (button', rShoulderBtn, ') -> next game');
+        this.handleLauncherNavigation('right');
+      }
+      this.buttonState[controllerIndex].rShoulderNav = true;
+    } else if (rShoulderBtn != null && !controller.buttons[rShoulderBtn]?.pressed) {
+      this.buttonState[controllerIndex].rShoulderNav = false;
+    }
+
+    if (lShoulderBtn != null && controller.buttons[lShoulderBtn]?.pressed &&
+        !prevButtonState.lShoulderNav) {
+      if (!selectHeld) {
+        console.log('L shoulder pressed (button', lShoulderBtn, ') -> previous game');
+        this.handleLauncherNavigation('left');
+      }
+      this.buttonState[controllerIndex].lShoulderNav = true;
+    } else if (lShoulderBtn != null && !controller.buttons[lShoulderBtn]?.pressed) {
+      this.buttonState[controllerIndex].lShoulderNav = false;
+    }
+
     // Face button actions
     const faceMapping = mapping.face;
     if (controller.buttons[faceMapping.btnBottom.gamepadButton]?.pressed &&
@@ -481,21 +517,61 @@ class GamepadManager {
     }
   }
   
+  // Detect D-pad "down" across the layouts a SNES → USB adapter can expose,
+  // the same way cmg's dashboard does — so the OSD chord works even when the
+  // D-pad isn't reported on the standard buttons 12-15:
+  //   - Standard mapping: D-pad Down on button 13 (or the configured button).
+  //   - Firefox non-standard: D-pad shifts past the face buttons (17/19/21).
+  //   - Analog / digital Y axis on axes 1/3/5/7 (down is positive).
+  //   - Encoded hat switch on axes[9].
+  isDpadDownActive(controller, mapping) {
+    if (!controller) return false;
+    const buttons = controller.buttons || [];
+    const axes = controller.axes || [];
+
+    // Button-based D-pad: configured down button + standard/Firefox offsets.
+    const downBtns = [13, 17, 19, 21];
+    const configured = mapping?.dpad?.down?.gamepadButton;
+    if (typeof configured === 'number' && !downBtns.includes(configured)) downBtns.push(configured);
+    if (downBtns.some((i) => buttons[i]?.pressed)) return true;
+
+    // Analog / digital Y axes. Ignore the neutral sentinel some pads report (>1.05).
+    for (const i of [1, 3, 5, 7]) {
+      const v = axes[i];
+      if (typeof v !== 'number' || Math.abs(v) > 1.05) continue;
+      if (v > this.PAD_DEADZONE) return true;
+    }
+
+    // Encoded hat switch on axes[9] — decode to a Y component (down is positive).
+    const hat = axes[9];
+    if (typeof hat === 'number' && hat >= -1 && hat <= 1) {
+      const angle = (hat + 1) * Math.PI;
+      const sy = -Math.cos(angle);
+      if (sy > this.PAD_DEADZONE) return true;
+    }
+    return false;
+  }
+
   processOSDControls(controller, controllerIndex, prevButtonState, mapping) {
     if (this.shouldSwallowFor(controllerIndex)) return; // Swallow while testing for selected controller
     const selectPressed = controller.buttons[mapping.special.select.gamepadButton]?.pressed;
-    const downPressed = controller.buttons[mapping.dpad.down.gamepadButton]?.pressed;
+    // Down via the SNES-accommodating multi-source detector (buttons/axes/hat),
+    // matching cmg. R shoulder is the SELECT + R fallback for pads whose D-pad
+    // isn't recognized at all.
+    const downPressed = this.isDpadDownActive(controller, mapping);
+    const rShoulderPressed = controller.buttons[mapping.shoulder?.rightShoulder?.gamepadButton]?.pressed;
+    const osdTrigger = selectPressed && (downPressed || rShoulderPressed);
 
-    // Open OSD: Select + DPad Down
+    // Open OSD: Select + DPad Down (or Select + R)
     if (!this.isOSDOpen()) {
-      if (selectPressed && downPressed && !prevButtonState.osdCombo) {
+      if (osdTrigger && !prevButtonState.osdCombo) {
         if (window.toggleOSD) {
           window.toggleOSD(true);
           // Defer focus init until after DOM updates
           setTimeout(() => this.initOSDFocus(), 0);
         }
         this.buttonState[controllerIndex].osdCombo = true;
-      } else if (!(selectPressed && downPressed)) {
+      } else if (!osdTrigger) {
         this.buttonState[controllerIndex].osdCombo = false;
       }
       return;
