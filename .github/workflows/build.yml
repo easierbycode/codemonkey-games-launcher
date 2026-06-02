@@ -61,7 +61,7 @@ jobs:
       APP_NAME: CodemonkeyGamesLauncher
       APP_DISPLAY_NAME: "Codemonkey Games Launcher"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -76,7 +76,7 @@ jobs:
           mkdir -p out
           cp "build/mac/${APP_NAME}.dmg" "out/CodeMonkeyGamesLauncher-${VERSION}-macos.dmg"
           cp "build/mac/${APP_NAME}.pkg" "out/CodeMonkeyGamesLauncher-${VERSION}-macos.pkg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: out/*
@@ -88,7 +88,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -106,7 +106,7 @@ jobs:
         run: |
           mkdir -p out
           (cd build/windows && zip -r "../../out/CodeMonkeyGamesLauncher-${VERSION}-windows.zip" .)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: out/*
@@ -118,7 +118,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -128,7 +128,7 @@ jobs:
         run: |
           mkdir -p out
           (cd build && zip -r "../out/CodeMonkeyGamesLauncher-${VERSION}-kazeta.zip" kazeta)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: kazeta
           path: out/*
@@ -142,7 +142,7 @@ jobs:
       contents: write # needed to create/update the release
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Flatten into a single folder
@@ -151,7 +151,7 @@ jobs:
           find dist -type f -exec cp {} out/ \;
           ls -la out
       - name: Attach binaries to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: out/*
