@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "download-page",
+      "runtimeExecutable": "deno",
+      "runtimeArgs": [
+        "run",
+        "--no-lock",
+        "--allow-net",
+        "--allow-env",
+        "deploy/download.ts"
+      ],
+      "port": 8000
+    }
+  ]
+}

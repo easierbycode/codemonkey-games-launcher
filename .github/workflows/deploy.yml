@@ -1,13 +1,24 @@
-name: Deploy
+name: Deploy download page
+
+# Deploys the public download page (deploy/download.ts) to Deno Deploy.
+#
+# This intentionally does NOT build or deploy the Fresh launcher app. The
+# launcher is a desktop app shipped as downloadable binaries (see build.yml);
+# only the lightweight, zero-dependency download page is hosted on Deno Deploy.
+# That avoids the esm.sh / deno.lock integrity failures that broke every prior
+# deploy, because the page imports nothing remote.
+
 on:
   push:
     branches: master
-  pull_request:
-    branches: master
+    paths:
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
 
 jobs:
   deploy:
-    name: Deploy
+    name: Deploy to Deno Deploy
     runs-on: ubuntu-latest
 
     permissions:
@@ -23,15 +34,12 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Refresh Deno cache
-        run: "deno cache --reload --lock=deno.lock main.ts"
-
-      - name: Build step
-        run: "deno task build"
+      - name: Type-check download page
+        run: deno check --no-lock deploy/download.ts
 
       - name: Upload to Deno Deploy
         uses: denoland/deployctl@v1
         with:
           project: "codemonkey-games-launcher"
-          entrypoint: "./_fresh/server.js"
-          root: ""
+          entrypoint: "download.ts"
+          root: "deploy"

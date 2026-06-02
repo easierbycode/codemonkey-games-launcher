@@ -2,3 +2,7 @@
 build/
 dist/
 .DS_Store
+
+# esm.sh rebuilds its denonext artifacts over time, so a committed lock
+# drifts and breaks CI integrity checks. Generated fresh per machine/run.
+deno.lock
