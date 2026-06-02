@@ -25,9 +25,10 @@ jobs:
       id-token: write # Needed for auth with Deno Deploy
       contents: read # Needed to clone the repository
 
-    # denoland/deployctl@v1 is still a Node 20 action upstream (no Node 24
-    # release yet). This documented opt-in runs it on the runner's Node 24 so
-    # there are no deprecation warnings; remove it once deployctl ships v2.
+    # denoland/deployctl@v1 still declares Node 20 in its metadata and has no
+    # Node 24 release yet. This documented opt-in actually runs it on Node 24
+    # now (a benign "being forced to run on Node.js 24" notice remains until
+    # deployctl ships a Node 24 release, at which point this can be removed).
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
